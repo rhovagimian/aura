@@ -21,3 +21,5 @@ tags
 aura-impl/src/test/eslint/
 node
 node_modules
+/aura.sublime-project
+/aura.sublime-workspace
