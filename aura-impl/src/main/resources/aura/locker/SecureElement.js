@@ -40,27 +40,73 @@ function _trustChildNodes(node, key) {
 	}
 }
 
-function validateAttributeName(se, raw, name, prototype, caseInsensitiveAttributes) {
-	// Always allow names with the form a-b.* (e.g. data-foo, x-foo, ng-repeat, etc) 
-	if (name.indexOf("-") >= 0) {
-		return;
-	}
+function isValidAttributeName(raw, name, prototype, caseInsensitiveAttributes) {
+    // Always allow names with the form a-b.* (e.g. data-foo, x-foo, ng-repeat, etc) 
+    if (name.indexOf("-") >= 0) {
+        return true;
+    }
 
-	if (name in caseInsensitiveAttributes) {
-		return;
-	}
-	
-	// Allow SVG elements free reign
-	if (raw instanceof SVGElement) {
-		return;
-	}
-	
-	if (!(name in prototype)) {
-		throw new $A.auraError(se + " does not permit setting the " + name.toLowerCase() + " attribute!");
-	}
+    if (name in caseInsensitiveAttributes) {
+        return true;
+    }
+
+    // Allow SVG elements free reign
+    if (raw instanceof SVGElement) {
+        return true;
+    }
+
+    if (name in prototype) {
+        return true;
+    }
+
+    return false;
 }
 
 var KEY_TO_PROTOTYPES = typeof Map !== "undefined" ? new Map() : undefined;
+
+var domPurifyConfig = {
+        // Allow SVG <use> element
+       "ADD_TAGS" : [ "use" ],
+       "ADD_ATTR" : ["aria-activedescendant",
+                     "aria-atomic",
+                     "aria-autocomplete",
+                     "aria-busy",
+                     "aria-checked",
+                     "aria-controls",
+                     "aria-describedby",
+                     "aria-disabled",
+                     "aria-readonly",
+                     "aria-dropeffect",
+                     "aria-expanded",
+                     "aria-flowto",
+                     "aria-grabbed",
+                     "aria-haspopup",
+                     "aria-hidden",
+                     "aria-disabled",
+                     "aria-invalid",
+                     "aria-label",
+                     "aria-labelledby",
+                     "aria-level",
+                     "aria-live",
+                     "aria-multiline",
+                     "aria-multiselectable",
+                     "aria-orientation",
+                     "aria-owns",
+                     "aria-posinset",
+                     "aria-pressed",
+                     "aria-readonly",
+                     "aria-relevant",
+                     "aria-required",
+                     "aria-selected",
+                     "aria-setsize",
+                     "aria-sort",
+                     "aria-valuemax",
+                     "aria-valuemin",
+                     "aria-valuenow",
+                     "aria-valuetext",
+                     "role",
+                     "target"]
+};
 
 function SecureElement(el, key) {
 	"use strict";
@@ -104,14 +150,15 @@ function SecureElement(el, key) {
 	var prototype = prototypes.get(tagName);
 	if (!prototype) {
 		prototype = Object.create(null);
-		
+
 		// "class", "id", etc global attributes are special because they do not directly correspond to any property
 		var caseInsensitiveAttributes = { 
 			"class": true,
 			"contextmenu": true,
 			"dropzone": true,
 			"http-equiv": true,
-			"id": true
+			"id": true,
+			"role": true
 		};
 
 		SecureElement.addStandardMethodAndPropertyOverrides(prototype, caseInsensitiveAttributes);
@@ -138,19 +185,20 @@ function SecureElement(el, key) {
 
 		// Conditionally add things that not all Node types support
 		if ("attributes" in el) {
-			
+
 			// DCHASMAN TODO We need Proxy (208) to fully implement the syntax/sematics of Element.attributes!
-			
+
 			tagNameSpecificConfig["attributes"] = SecureObject.createFilteredPropertyStateless("attributes", prototype, {
 				writable : false,
 				afterGetCallback : function(attributes) {
 					// Secure attributes
 					var secureAttributes = [];
+					var raw = SecureObject.getRaw(this, prototype);
 					for (var i = 0; i < attributes.length; i++) {
 						var attribute = attributes[i];
-						
+
 						// Only add supported attributes
-						if (attribute.name in prototype || attribute.name in caseInsensitiveAttributes) {
+						if (isValidAttributeName(raw, attribute.name, prototype, caseInsensitiveAttributes)) {
 							secureAttributes.push({
 								name : attribute.name,
 								value : SecureObject.filterEverything(this, attribute.value)
@@ -197,11 +245,7 @@ function SecureElement(el, key) {
 
 					value = SecureObject.unfilterEverything(this, value);
 
-					// Allow SVG <use> element
-					var config = {
-						"ADD_TAGS" : [ "use" ]
-					};
-					raw.innerHTML = DOMPurify["sanitize"](value, config);
+					raw.innerHTML = DOMPurify["sanitize"](value, domPurifyConfig);
 
 					trustChildNodes(this, raw);
 				}
@@ -312,11 +356,7 @@ SecureElement.addStandardMethodAndPropertyOverrides = function(prototype, caseIn
 					throw new $A.auraError("SecureElement.insertAdjacentHTML requires position 'beforeBegin', 'afterBegin', 'beforeEnd', or 'afterEnd'.");
 				}
 
-				// Allow SVG <use> element
-				var config = {
-					"ADD_TAGS" : [ "use" ]
-				};
-				raw.insertAdjacentHTML(position, DOMPurify["sanitize"](text, config));
+				raw.insertAdjacentHTML(position, DOMPurify["sanitize"](text, domPurifyConfig));
 
 				trustChildNodes(this, parent || raw);
 			}
@@ -391,7 +431,9 @@ SecureElement.createAttributeAccessMethodConfig = function(methodName, prototype
     		var args = SecureObject.ArrayPrototypeSlice.call(arguments);
     		
     		var name = args[namespaced ? 1 : 0];
-    		validateAttributeName(this, raw, name, prototype, caseInsensitiveAttributes);
+            if (!isValidAttributeName(raw, name, prototype, caseInsensitiveAttributes)) {
+                throw new $A.auraError(this + " does not permit setting the " + name.toLowerCase() + " attribute!");
+            }
 
     		return raw[methodName].apply(raw, args);
     	}
@@ -1049,7 +1091,8 @@ SecureElement.metadata = {
 			"deleteCaption":                  FUNCTION,
 			"rows":                           DEFAULT,
 			"insertRow":                      FUNCTION_TRUST_RETURN_VALUE,
-			"deleteRow":                      FUNCTION
+			"deleteRow":                      FUNCTION,
+			"width":                          DEFAULT
 		},
 		"HTMLTableRowElement": {
 			"cells":                          DEFAULT,

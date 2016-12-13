@@ -206,7 +206,8 @@
 	        "deleteCaption":                  { type: "function" },
 	        "rows":                           { type: "HTMLCollection" },
 	        "insertRow":                      { type: "function" },
-	        "deleteRow":                      { type: "function" }
+	        "deleteRow":                      { type: "function" },
+	        "width":                          { type: "string" }
 	    },
 	    "HTMLTableRowElement": {
 	        "cells":                          { type: "HTMLCollection" },
@@ -273,7 +274,7 @@
             "align":                          { type: "string" },
             "allowFullscreen":                { type: "boolean" },
             "contentDocument":                { type: "Null", support: false },
-            "contentWindow":                  { type: "Null", support: false },
+            "contentWindow":                  { type: "Window" },
             "frameBorder":                    { type: "string" },
             "getSVGDocument":                 { type: "function", support: false },
             "height":                         { type: "string" },

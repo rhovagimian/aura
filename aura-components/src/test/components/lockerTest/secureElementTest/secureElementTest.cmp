@@ -67,6 +67,8 @@
     <aura:method name="testCloneNodeDeep_VerifyBlockedAccess" action="{!c.testCloneNodeDeep_VerifyBlockedAccess}"/>
     <aura:method name="testTextNodeApi" action="{!c.testTextNodeApi}"/>
     <aura:method name="testTextNodeSplitText" action="{!c.testTextNodeSplitText}"/>
+    <aura:method name="testAriaAttributesAccessible" action="{!c.testAriaAttributesAccessible}"/>
+    <aura:method name="testAttributesPropertyContainsData" action="{!c.testAttributesPropertyContainsData}"/>
 
     <lockerTest:facet/>
 
@@ -74,7 +76,7 @@
 
     <input type="text" aura:id="input" value="input" />
     <textarea aura:id="textarea" value="textarea" />
-    <button aura:id="button" value="button" >button</button>
+    <button aura:id="button" value="button">button</button>
     <a aura:id="link">link</a>
     <form aura:id="form" />
     <img aura:id="img" />
@@ -86,9 +88,10 @@
             <th aura:id="th">th</th>
         </tr>
         <tr>
-            <td aura:id="td">td</td>
+            <td aura:id="td" id="td" role="cell" aria-describedby="123">td</td>
         </tr>
     </table>
+    <div id="attributesTester" foo="meep" data-foo="data-foo data" ng-repeat="x in names"/>
 
     <div aura:id="scalarExpression">{!v.scalarExpression}</div>
 

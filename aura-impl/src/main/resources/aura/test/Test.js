@@ -46,6 +46,12 @@ function TestInstance() {
     this.prePostDecodeConfigs = [];
     this.installOverride();
     this.name = undefined;
+    
+    this.testBootstrap = {};
+    this.testBootstrap['frameworkJsReadyWhenCreateTestInstance'] = false;
+    if(window['Aura'] && window['Aura']['frameworkJsReady']) {
+    	this.testBootstrap['frameworkJsReadyWhenCreateTestInstance'] = true;
+    }
 }
 
 /**
