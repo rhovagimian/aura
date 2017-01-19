@@ -14,14 +14,13 @@
  * limitations under the License.
  */
 ({
-    unrender: function(component) {
-
-        //clean up constraint
-        if(component.positionConstraint) {
-            component.positionConstraint.destroy();
-            delete component.positionConstraint;
+    afterRender : function(component, helper){
+        if (component.get('v.visible')) {
+            helper.positionList(component);
         }
+    },
 
-        this.superUnrender();
+    unrender: function(component, helper) {
+        helper.clearPositionConstraint(component);
     }
 })// eslint-disable-line semi

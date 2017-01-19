@@ -616,7 +616,7 @@ public abstract class BaseComponentDefImpl<T extends BaseComponentDef> extends
         }
 
         for (DependencyDef dep : this.dependencies) {
-            dep.appendDependencies(dependencies);
+            dep.appendDependencies(dependencies, this);
         }
     }
 
@@ -1148,7 +1148,7 @@ public abstract class BaseComponentDefImpl<T extends BaseComponentDef> extends
         out.append(AuraTextUtil.escapeForJavascriptString(objectVariable));
         out.append("\", def);\n");
 
-        out.append("  return locker.$result;\n");
+        out.append("  return locker.returnValue;\n");
         out.append("});\n");
 
         return out.toString();

@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.auraframework</groupId>
         <artifactId>aura-framework</artifactId>
-        <version>0.5055-SNAPSHOT</version>
+        <version>0.5164-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <dependencies>
@@ -15,8 +15,8 @@
         </dependency>
     </dependencies>
     <build>
-        <resources>
-            <resource>
+      <resources>
+         <resource>
                 <!-- We generate resources into a separate directory from
                      target/classes, so Eclipse can look for it with C-S-r if
                      anyone wants that for debugging. -->
@@ -63,7 +63,7 @@
             <executions>
                <execution>
                   <id>generate-javascript</id>
-                  <phase>process-resources</phase>
+                  <phase>process-classes</phase>
                   <configuration>
                      <target>
                         <java classname="org.auraframework.tools.javascript.GenerateJavascript" classpathref="maven.runtime.classpath" fork="true" maxmemory="512m" failonerror="true">
@@ -76,18 +76,18 @@
                   </goals>
                </execution>
                <execution>
-                        <id>combine-libraries</id>
-                        <phase>generate-resources</phase>
-                        <configuration>
-                            <target>
-                                <java classname="org.auraframework.tools.javascript.CombineJavascriptLibraries" classpathref="maven.runtime.classpath" fork="true" maxmemory="512m" failonerror="true">
-                                    <jvmarg value="-Daura.home=${basedir}/.." />
-                                </java>
-                            </target>
-                        </configuration>
-                        <goals>
-                            <goal>run</goal>
-                        </goals>
+                    <id>combine-libraries</id>
+                    <phase>process-classes</phase>
+                    <configuration>
+                        <target>
+                            <java classname="org.auraframework.tools.javascript.CombineJavascriptLibraries" classpathref="maven.runtime.classpath" fork="true" maxmemory="512m" failonerror="true">
+                                <jvmarg value="-Daura.home=${basedir}/.." />
+                            </java>
+                        </target>
+                    </configuration>
+                    <goals>
+                        <goal>run</goal>
+                    </goals>
                </execution>
             </executions>
          </plugin>
@@ -96,7 +96,6 @@
             <executions>
                <execution>
                   <id>copy-jsdoc3</id>
-                  <!-- here the phase you need -->
                   <phase>validate</phase>
                   <goals>
                      <goal>copy-resources</goal>
@@ -129,7 +128,7 @@
                </execution>
                <execution>
                   <id>aura-framework</id>
-                  <phase>process-resources</phase>
+                  <phase>process-classes</phase>
                   <goals>
                      <goal>copy-resources</goal>
                   </goals>
@@ -147,6 +146,18 @@
       </plugins>
       <pluginManagement>
          <plugins>
+            <plugin>
+               <groupId>org.apache.maven.plugins</groupId>
+               <artifactId>maven-jar-plugin</artifactId>
+               <configuration>
+                  <excludes>
+                     <exclude>jsdoc/**/*.html</exclude>
+                     <exclude>jsdoc/**/*.js</exclude>
+                     <exclude>jsdoc/**/*.css</exclude>
+                     <exclude>jsdoc/**/*.txt</exclude>
+                  </excludes>
+               </configuration>
+            </plugin>
             <!--This plugin's configuration is used to store Eclipse m2e settings
                     only. It has no influence on the Maven build itself. -->
             <plugin>
@@ -229,38 +240,17 @@
                   <executions>
                      <execution>
                         <id>generate-jsdoc</id>
-                        <phase>process-resources</phase>
+                        <phase>process-classes</phase>
                         <configuration>
                            <sourceFiles>
                               <sourceFile>${basedir}/target/src-gen/main/resources/aura/javascript/aura_doc.js</sourceFile>
                            </sourceFiles>
-                           <outputDirectory>${basedir}/target/src-gen/main/resources/jsdoc</outputDirectory>
+                           <outputDirectory>${basedir}/target/classes/jsdoc</outputDirectory>
                            <configFile>${basedir}/config/jsdoc3/${jsDoc.mode}.json</configFile>
                         </configuration>
                         <goals>
                            <goal>jsdoc3</goal>
                         </goals>
-                     </execution>
-                  </executions>
-               </plugin>
-               <plugin>
-                  <artifactId>maven-resources-plugin</artifactId>
-                  <executions>
-                     <execution>
-                        <id>aura-jsdocs-copy</id>
-                        <phase>process-resources</phase>
-                        <goals>
-                           <goal>copy-resources</goal>
-                        </goals>
-                        <configuration>
-                           <outputDirectory>target/classes/jsdoc</outputDirectory>
-                           <resources>
-                              <resource>
-                                 <directory>target/src-gen/main/resources/jsdoc</directory>
-                                 <include>**/*.json</include>
-                              </resource>
-                           </resources>
-                        </configuration>
                      </execution>
                   </executions>
                </plugin>

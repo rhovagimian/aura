@@ -19,7 +19,27 @@
 		cmp.getElement().style.zIndex = cmp.get('v.zIndex');
 	},
 
-	handleReferenceElement: function(cmp, evt, helper) {
-		helper.handleReferenceElement(cmp);
+	repositionPanel: function(cmp, evt, helper) {
+		helper.reposition(cmp, null);
+	},
+
+	listCollapse: function(cmp) {
+		cmp.set('v.visible', false);
+	},
+
+	handleVisibilityChange: function(cmp, evt, helper) {
+		if (cmp.get('v.visible')) {
+			helper.positionList(cmp);
+		} else {
+			helper.clearPositionConstraint(cmp);
+		}
+	},
+
+	handleReferenceChange: function(cmp, evt, helper) {
+		if (cmp.get('v.visible') && !cmp.positionConstraint) {
+			helper.positionList(cmp);
+		} else {
+			helper.reposition(cmp, null);
+		}
 	}
 })// eslint-disable-line semi

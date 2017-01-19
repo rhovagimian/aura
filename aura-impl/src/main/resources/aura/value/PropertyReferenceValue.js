@@ -27,6 +27,7 @@ function PropertyReferenceValue(path, valueProvider) {
     this.valueProvider = valueProvider;
     this.context=(valueProvider instanceof PassthroughValue)?valueProvider:$A.getContext().getCurrentAccess();
     this.lastResult=null;
+    this.isValid=true;
 
     // #if {"modes" : ["STATS"]}
     valueFactory.index(this);
@@ -37,28 +38,35 @@ function PropertyReferenceValue(path, valueProvider) {
  * Returns the dereferenced value indicated by the path supplied.
  */
 PropertyReferenceValue.prototype.evaluate = function(valueProvider) {
+    if(this.isValid) {
     if (this.isGlobal) {
-        this.lastResult=aura.get(this.expression);
+            this.lastResult = aura.get(this.expression);
         return this.lastResult;
     }
+        if (!valueProvider) {
+            valueProvider = this.valueProvider;
+        }
     $A.getContext().setCurrentAccess(this.context);
-    var result=(valueProvider || this.valueProvider).get(this.expression);
-    this.lastResult=result;
+        var result = valueProvider.get(this.expression);
+        this.lastResult = result;
     $A.getContext().releaseCurrentAccess();
     return result;
+    }
 };
 
 /**
  * Sets the value indicated by the path
  */
 PropertyReferenceValue.prototype.set = function(value) {
-    if(this.isGlobal) {
+    if(this.isValid) {
+        if (this.isGlobal) {
         return aura.set(this.expression, value);
     }
     $A.getContext().setCurrentAccess(this.context);
-    var result=this.valueProvider.set(this.expression, value);
+        var result = this.valueProvider.set(this.expression, value);
     $A.getContext().releaseCurrentAccess();
     return result;
+    }
 };
 
 /**
@@ -67,10 +75,6 @@ PropertyReferenceValue.prototype.set = function(value) {
 PropertyReferenceValue.prototype.addChangeHandler=function(cmp, key, method, rebind) {
     var valueProvider=this.valueProvider;
     var expression = this.expression;
-    // while(valueProvider instanceof PassthroughValue){
-    //  expression = valueProvider.getExpression(expression);
-    //     valueProvider=valueProvider.getComponent();
-    // }
     if(this.isGlobal){
         $A.expressionService.addListener(this,key,cmp);
         return;
@@ -91,10 +95,6 @@ PropertyReferenceValue.prototype.addChangeHandler=function(cmp, key, method, reb
         method.key=key;
         var config={"event": "change", "value": expression, "method": method, "cmp": cmp};
         this.valueProvider.addValueHandler(config);
-
-        // if(this.valueProvider instanceof PassthroughValue) {
-        //     this.valueProvider.addValueHandler({"event": "change", "value": this.expression, "method": method});
-        // }
     }
 };
 
@@ -110,13 +110,24 @@ PropertyReferenceValue.prototype.removeChangeHandler=function(cmp, key){
         $A.expressionService.removeListener(this,key,cmp);
         return;
     }
+    if (!valueProvider) {
+        return;
+    }
 
     while(valueProvider instanceof PassthroughValue){
         expression = valueProvider.getExpression(expression);
         valueProvider=valueProvider.getComponent();
     }
     if(this.valueProvider.removeValueHandler&&(valueProvider!==cmp||this.expression!==key)) {
-        this.valueProvider.removeValueHandler({"event": "change", "value": this.expression, "id":cmp.getGlobalId(),"key":key});
+        //
+        // Also see PassThroughValue
+        // Horrendous Hack. We add both the id and the component to the
+        // config so that we don't have to go back and look up the component here.
+        // Turns out that things are sometimes out of order and the component is then
+        // not in the global index, leading to a failure when adding and removing
+        // elements quickly.
+        //
+        this.valueProvider.removeValueHandler({"event": "change", "value": this.expression, "id":cmp.getGlobalId(), "cmp":cmp, "key":key});
     }
 };
 
@@ -172,7 +183,8 @@ PropertyReferenceValue.prototype.destroy = function() {
     // #if {"modes" : ["STATS"]}
     valueFactory.deIndex(this);
     // #end
-    this.valueProvider=this.expression=this.path=this.context=null;
+    this.valueProvider=this.context=null;
+    this.isValid=false;
 };
 
 /**

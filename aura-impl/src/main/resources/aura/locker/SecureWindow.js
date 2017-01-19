@@ -28,79 +28,79 @@
  *            key - the key to apply to the secure window
  */
 function SecureWindow(win, key, globalAttributeWhitelist) {
-	"use strict";
+    "use strict";
 
     var o = ls_getFromCache(win, key);
     if (o) {
         return o;
     }
 
-	o = Object.create(null, {
-		document: {
-			enumerable: true,
-			value: SecureDocument(win.document, key)
-		},
-		"$A": {
-			enumerable: true,
-			value: SecureAura(win['$A'], key)
-		},
-		window: {
-			enumerable: true,
-			get: function () {
-				// circular window references to match DOM API
-				return o;
-			}
-		},
-		localStorage: {
-			enumerable: true,
-			value: SecureStorage(win.localStorage, "LOCAL", key)
-		},
-		sessionStorage: {
-			enumerable: true,
-			value: SecureStorage(win.sessionStorage, "SESSION", key)
-		},
-		MutationObserver: {
-			enumerable: true,
-			value: SecureMutationObserver(key)
-		},
-		navigator: {
-			enumerable: true,
-			value: SecureNavigator(win.navigator, key)
-		},
-		XMLHttpRequest: {
-			enumerable: true,
-			value: SecureXMLHttpRequest(key)
-		},
-		setTimeout: {
-			enumerable: true,
-			value: function (callback) {
-				return setTimeout.apply(win, [SecureObject.FunctionPrototypeBind.call(callback, o)].concat(SecureObject.ArrayPrototypeSlice.call(arguments, 1)));
-			}
-		},
-		setInterval: {
-			enumerable: true,
-			value: function (callback) {
-				return setInterval.apply(win, [SecureObject.FunctionPrototypeBind.call(callback, o)].concat(SecureObject.ArrayPrototypeSlice.call(arguments, 1)));
-			}
-		},
-		toString: {
-			value: function() {
-				return "SecureWindow: " + win + "{ key: " + JSON.stringify(key) + " }";
-			}
-		}
-	});
+    o = Object.create(null, {
+        document: {
+            enumerable: true,
+            value: SecureDocument(win.document, key)
+        },
+        "$A": {
+            enumerable: true,
+            value: SecureAura(win['$A'], key)
+        },
+        window: {
+            enumerable: true,
+            get: function () {
+                // circular window references to match DOM API
+                return o;
+            }
+        },
+        localStorage: {
+            enumerable: true,
+            value: SecureStorage(win.localStorage, "LOCAL", key)
+        },
+        sessionStorage: {
+            enumerable: true,
+            value: SecureStorage(win.sessionStorage, "SESSION", key)
+        },
+        MutationObserver: {
+            enumerable: true,
+            value: SecureMutationObserver(key)
+        },
+        navigator: {
+            enumerable: true,
+            value: SecureNavigator(win.navigator, key)
+        },
+        XMLHttpRequest: {
+            enumerable: true,
+            value: SecureXMLHttpRequest(key)
+        },
+        setTimeout: {
+            enumerable: true,
+            value: function (callback) {
+                return setTimeout.apply(win, [SecureObject.FunctionPrototypeBind.call(callback, o)].concat(SecureObject.ArrayPrototypeSlice.call(arguments, 1)));
+            }
+        },
+        setInterval: {
+            enumerable: true,
+            value: function (callback) {
+                return setInterval.apply(win, [SecureObject.FunctionPrototypeBind.call(callback, o)].concat(SecureObject.ArrayPrototypeSlice.call(arguments, 1)));
+            }
+        },
+        toString: {
+            value: function() {
+                return "SecureWindow: " + win + "{ key: " + JSON.stringify(key) + " }";
+            }
+        }
+    });
 
-	[ "outerHeight", "outerWidth" ].forEach(function(name) {
-		SecureObject.addPropertyIfSupported(o, win, name, {
-			filterOpaque : true
-		});
-	});
+    [ "outerHeight", "outerWidth" ].forEach(function(name) {
+        SecureObject.addPropertyIfSupported(o, win, name, {
+            filterOpaque : true
+        });
+    });
 
-	[ "getComputedStyle", "scroll", "scrollBy", "scrollTo" ].forEach(function(name) {
-		SecureObject.addMethodIfSupported(o, win, name, {
-			filterOpaque : true
-		});
-	});
+    [ "getComputedStyle", "scroll", "scrollBy", "scrollTo" ].forEach(function(name) {
+        SecureObject.addMethodIfSupported(o, win, name, {
+            filterOpaque : true
+        });
+    });
 
     [ "open"].forEach(function(name) {
         SecureObject.addMethodIfSupported(o, win, name, {
@@ -118,29 +118,92 @@ function SecureWindow(win, key, globalAttributeWhitelist) {
         });
     });
 
-	SecureElement.addEventTargetMethods(o, win, key);
+    if ("FormData" in win) {
+        Object.defineProperty(o, "FormData", {
+            get: function() {
+                return function() {
+                    var args = SecureObject.ArrayPrototypeSlice.call(arguments);
+                    var unfilteredArgs = SecureObject.unfilterEverything(o, args);
+                    var cls = win["FormData"];
+                    if (typeof cls === "function") {
+                        return new (Function.prototype.bind.apply(window["FormData"], [null].concat(unfilteredArgs)));
+                    } else {
+                        return new cls(unfilteredArgs);
+                    }
+                };
+            }
+        });
+    }
+
+    ["Blob", "File"].forEach(function(name) {
+        if(name in win) {
+            Object.defineProperty(o, name, {
+                get: function () {
+                    return function () {
+                        var cls = win[name],
+                            result,
+                            args = Array.prototype.slice.call(arguments);
+                        var scriptTagsRegex = /<script[\s\S]*?>[\s\S]*?<\/script[\s]*?>/gi;
+                        if (scriptTagsRegex.test(args[0])) {
+                            throw new $A.auraError(name + " creation failed: <script> tags are blocked");
+                        }
+                        if (typeof cls === "function") {
+                            //  Function.prototype.bind.apply is being used to invoke the constructor and to pass all the arguments provided by the caller
+                            // TODO Switch to ES6 when available https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Spread_operator
+                            result = new (Function.prototype.bind.apply(cls, [null].concat(args)));
+                        } else {
+                            // For browsers that use a constructor that's not a function, invoke the constructor directly.
+                            // For example, on Mobile Safari window["Blob"] returns an object called BlobConstructor
+                            // Invoke constructor with specific arguments, handle up to 3 arguments(Blob accepts 2 param, File accepts 3 param)
+                            switch (args.length) {
+                                case 0:
+                                    result = new cls();
+                                    break;
+                                case 1:
+                                    result = new cls(args[0]);
+                                    break;
+                                case 2:
+                                    result = new cls(args[0], args[1]);
+                                    break;
+                                case 3:
+                                    result = new cls(args[0], args[1], args[2]);
+                                    break;
+                            }
+                        }
+                        return result;
+                    };
+                }
+            });
+        }
+    });
+
+    SecureElement.addEventTargetMethods(o, win, key);
 
     // Salesforce API entry points (first phase) - W-3046191 is tracking adding $A.lockerService.publish() API enhancement where we will move these
     // to their respective javascript/container architectures
     ["sforce", "Sfdc"].forEach(function(name) {
-		SecureObject.addPropertyIfSupported(o, win, name);
-	});
+        SecureObject.addPropertyIfSupported(o, win, name);
+    });
+    
+    var workerFrame = win.document.getElementById("safeEvalWorker");
+    var safeEvalWindow = workerFrame && workerFrame.contentWindow;            
+    var globalScope = safeEvalWindow || win;
 
-	// Has to happen last because it depends on the secure getters defined above that require the object to be keyed
-	globalAttributeWhitelist.forEach(function(name) {
-		// These are direct passthrough's and should never be wrapped in a SecureObject
-		Object.defineProperty(o, name, {
-			enumerable: true,
-			value: win[name]
-		});
-	});
+    // Has to happen last because it depends on the secure getters defined above that require the object to be keyed
+    globalAttributeWhitelist.forEach(function(name) {
+        // These are direct passthrough's and should never be wrapped in a SecureObject
+        Object.defineProperty(o, name, {
+            enumerable: true,
+            value: globalScope[name]
+        });
+    });
 
     SecureObject.addPrototypeMethodsAndProperties(SecureWindow.metadata, o, win, key);
 
     ls_setRef(o, win, key);
     ls_addToCache(win, o, key);
 
-	return o;
+    return o;
 }
 
 var DEFAULT = SecureElement.DEFAULT;
@@ -150,7 +213,7 @@ var CTOR = { type: "@ctor" };
 var RAW = { type: "@raw" };
 
 SecureWindow.metadata = {
-	"prototypes": {
+    "prototypes": {
         "Window" : {
             "$A":                                   DEFAULT,
             "AnalyserNode":                         FUNCTION,
@@ -177,7 +240,6 @@ SecureWindow.metadata = {
             "BeforeUnloadEvent":                    FUNCTION,
             "BiquadFilterNode":                     FUNCTION,
             "BlobEvent":                            FUNCTION,
-            "Blob":                                 RAW,
             "Boolean":                              FUNCTION,
             "CDATASection":                         FUNCTION,
             "CSS":                                  FUNCTION,
@@ -236,15 +298,14 @@ SecureWindow.metadata = {
             "DragEvent":                            FUNCTION,
             "DynamicsCompressorNode":               FUNCTION,
             "ES6Promise":                           DEFAULT,
-            "Element":                              FUNCTION,
+            "Element":                              RAW,
             "Error":                                FUNCTION,
             "ErrorEvent":                           FUNCTION,
             "EvalError":                            FUNCTION,
             "Event":                                FUNCTION,
             "EventSource":                          FUNCTION,
-            "EventTarget":                          FUNCTION,
+            "EventTarget":                          RAW,
             "FederatedCredential":                  FUNCTION,
-            "File":                                 RAW,
             "FileError":                            FUNCTION,
             "FileList":                             RAW,
             "FileReader":                           RAW,
@@ -252,7 +313,6 @@ SecureWindow.metadata = {
             "Float64Array":                         RAW,
             "FocusEvent":                           FUNCTION,
             "FontFace":                             FUNCTION,
-            "FormData":                             FUNCTION,
             "Function":                             FUNCTION,
             "GainNode":                             FUNCTION,
             "HTMLAllCollection":                    FUNCTION,
@@ -373,9 +433,9 @@ SecureWindow.metadata = {
             "MediaStreamAudioSourceNode":           FUNCTION,
             "MediaStreamEvent":                     FUNCTION,
             "MediaStreamTrack":                     FUNCTION,
-            "MessageChannel":                       FUNCTION,
-            "MessageEvent":                         FUNCTION,
-            "MessagePort":                          FUNCTION,
+            "MessageChannel":                       RAW,
+            "MessageEvent":                         RAW,
+            "MessagePort":                          RAW,
             "MimeType":                             FUNCTION,
             "MimeTypeArray":                        FUNCTION,
             "MutationObserver":                    	CTOR,
@@ -733,10 +793,10 @@ SecureWindow.metadata = {
             "ontimeupdate":                         EVENT,
             "ontoggle":                             EVENT,
             "ontransitionend":                      EVENT,
-	        "ontouchcancel":               	  		EVENT,
-	        "ontouchend":                	  		EVENT,
-	        "ontouchmove":                	  		EVENT,
-	        "ontouchstart":                	  		EVENT,
+            "ontouchcancel":               	  		EVENT,
+            "ontouchend":                	  		EVENT,
+            "ontouchmove":                	  		EVENT,
+            "ontouchstart":                	  		EVENT,
             "onunhandledrejection":                 EVENT,
             "onunload":                             EVENT,
             "onvolumechange":                       EVENT,

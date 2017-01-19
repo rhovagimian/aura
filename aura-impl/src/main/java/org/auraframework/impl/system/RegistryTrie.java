@@ -15,8 +15,8 @@
  */
 package org.auraframework.impl.system;
 
-import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -33,6 +33,7 @@ import org.auraframework.system.DefRegistry;
 import org.auraframework.system.RegistrySet;
 import org.auraframework.throwable.AuraError;
 
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 
@@ -41,18 +42,18 @@ import com.google.common.collect.Sets;
  */
 public class RegistryTrie implements RegistrySet {
 
-    private final DefRegistry<?>[] allRegistries;
+    private final Collection<DefRegistry> allRegistries;
     private final Set<String> allNamespaces = new HashSet<>();
     // a map of map of maps
     private final HashMap<String,Object> root = Maps.newHashMap();
 
-    private EnumMap<DefType, DefRegistry<?>> insertDefTypeReg(EnumMap<DefType, DefRegistry<?>> defTypeMap, DefRegistry<?> reg) {
+    private EnumMap<DefType, DefRegistry> insertDefTypeReg(EnumMap<DefType, DefRegistry> defTypeMap, DefRegistry reg) {
         if (defTypeMap == null) {
             defTypeMap = new EnumMap<>(DefType.class);
         }
         for (DefType dt : reg.getDefTypes()) {
             if (defTypeMap.containsKey(dt)) {
-                DefRegistry<?> existing = defTypeMap.get(dt);
+                DefRegistry existing = defTypeMap.get(dt);
                 throw new AuraError(String.format(
                         "Duplicate DefType/Prefix/Namespace combination claimed by 2 DefRegistries : {%s/%s/%s} and {%s/%s/%s}",
                         existing.getDefTypes(), existing.getPrefixes(), existing.getNamespaces(), reg.getDefTypes(),
@@ -63,7 +64,7 @@ public class RegistryTrie implements RegistrySet {
         return defTypeMap;
     }
 
-    private Map<String, Object> insertPrefixReg(Map<String, Object> prefixMap, DefRegistry<?> reg) {
+    private Map<String, Object> insertPrefixReg(Map<String, Object> prefixMap, DefRegistry reg) {
         if (prefixMap == null) {
             prefixMap = Maps.newHashMap();
         }
@@ -76,7 +77,7 @@ public class RegistryTrie implements RegistrySet {
                 prefixMap.put(prefix, reg);
             } else {
                 if (orig instanceof DefRegistry) {
-                    namespaceMap = insertNamespaceReg(null, (DefRegistry<?>)orig);
+                    namespaceMap = insertNamespaceReg(null, (DefRegistry)orig);
                 } else {
                     @SuppressWarnings("unchecked")
                     Map<String,Object> t = (Map<String,Object>)orig;
@@ -89,23 +90,23 @@ public class RegistryTrie implements RegistrySet {
         return prefixMap;
     }
 
-    private Map<String,Object> insertNamespaceReg(Map<String, Object> namespaceMap, DefRegistry<?> reg) {
+    private Map<String,Object> insertNamespaceReg(Map<String, Object> namespaceMap, DefRegistry reg) {
         if (namespaceMap == null) {
             namespaceMap = Maps.newHashMap();
         }
         for (String namespaceUnknown : reg.getNamespaces()) {
             String namespace = namespaceUnknown.toLowerCase();
             Object orig = namespaceMap.get(namespace);
-            EnumMap<DefType, DefRegistry<?>> defTypeMap;
+            EnumMap<DefType, DefRegistry> defTypeMap;
 
             if (orig == null) {
                 namespaceMap.put(namespace, reg);
             } else {
                 if (orig instanceof DefRegistry) {
-                    defTypeMap = insertDefTypeReg(null, (DefRegistry<?>)orig);
+                    defTypeMap = insertDefTypeReg(null, (DefRegistry)orig);
                 } else {
                     @SuppressWarnings("unchecked")
-                    EnumMap<DefType,DefRegistry<?>> t = (EnumMap<DefType,DefRegistry<?>>)orig;
+                    EnumMap<DefType,DefRegistry> t = (EnumMap<DefType,DefRegistry>)orig;
                     defTypeMap = t;
                 }
                 defTypeMap = insertDefTypeReg(defTypeMap, reg);
@@ -116,7 +117,7 @@ public class RegistryTrie implements RegistrySet {
     }
 
     private void initializeHashes() {
-        for (DefRegistry<?> reg : allRegistries) {
+        for (DefRegistry reg : allRegistries) {
             insertPrefixReg(root, reg);
             for (String ns : reg.getNamespaces()) {
                 allNamespaces.add(ns.toLowerCase());
@@ -125,14 +126,19 @@ public class RegistryTrie implements RegistrySet {
         allNamespaces.remove("*");
     }
 
-    public RegistryTrie(@Nonnull DefRegistry<?>... registries) {
-        allRegistries = registries;
+    public RegistryTrie(Collection<DefRegistry> registries) {
+        allRegistries = Collections.unmodifiableCollection(registries);
         initializeHashes();
     }
 
+    @Deprecated
+    public RegistryTrie(@Nonnull DefRegistry... registries) {
+        this(Lists.newArrayList(registries));
+    }
+
     @Override
-    public Collection<DefRegistry<?>> getAllRegistries() {
-        return Arrays.asList(allRegistries);
+    public Collection<DefRegistry> getAllRegistries() {
+        return allRegistries;
     }
 
     /**
@@ -142,12 +148,12 @@ public class RegistryTrie implements RegistrySet {
      * and namespace.
      */
     @Override
-    public Collection<DefRegistry<?>> getRegistries(DescriptorFilter matcher) {
-        Set<DefRegistry<?>> matched;
+    public Collection<DefRegistry> getRegistries(DescriptorFilter matcher) {
+        Set<DefRegistry> matched;
 
         matched = Sets.newHashSet();
 
-        for (DefRegistry<?> reg : this.allRegistries) {
+        for (DefRegistry reg : this.allRegistries) {
             boolean found = false;
 
             for (String prefix : reg.getPrefixes()) {
@@ -170,7 +176,7 @@ public class RegistryTrie implements RegistrySet {
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T extends Definition> DefRegistry<T> getRegistryFor(DefDescriptor<T> descriptor) {
+    public <T extends Definition> DefRegistry getRegistryFor(DefDescriptor<T> descriptor) {
         if (descriptor == null) {
             return null;
         }
@@ -188,7 +194,7 @@ public class RegistryTrie implements RegistrySet {
             return null;
         }
         if (top instanceof DefRegistry) {
-            return (DefRegistry<T>)top;
+            return (DefRegistry)top;
         }
         Map<String,Object> namespaceMap = (Map<String,Object>)top;
 
@@ -201,10 +207,10 @@ public class RegistryTrie implements RegistrySet {
             return null;
         }
         if (nsObj instanceof DefRegistry) {
-            return (DefRegistry<T>) nsObj;
+            return (DefRegistry) nsObj;
         }
 
-        Map<DefType,DefRegistry<?>> defTypeMap = (Map<DefType,DefRegistry<?>>)nsObj;
-        return (DefRegistry<T>)defTypeMap.get(descriptor.getDefType());
+        Map<DefType,DefRegistry> defTypeMap = (Map<DefType,DefRegistry>)nsObj;
+        return defTypeMap.get(descriptor.getDefType());
     }
 }

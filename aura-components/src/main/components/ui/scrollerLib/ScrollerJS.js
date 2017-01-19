@@ -234,7 +234,13 @@ function lib(w) { //eslint-disable-line no-unused-vars
         * @static
         * @default "false"
         */
-        MOUSE_WHEEL_INVERTED  = false;
+        MOUSE_WHEEL_INVERTED  = false,
+
+        /**
+        * Specifies the input elements that are needed to scroll into view
+        * manually when scroller is using css transition
+        */
+        INPUT_TAGS = ['INPUT', 'TEXTAREA'];
 
     /**
     * Scroller class that provides the core logic for scrolling.
@@ -488,7 +494,6 @@ function lib(w) { //eslint-disable-line no-unused-vars
             if (this.opts.gpuOptimization && this.opts.useNativeScroller && oldSize !== this.wrapperSize) {
                 this.scroller.style.height = this.wrapperSize + 'px';
             }
-            
         },
         /**
         * Sets the overall sizes of the scroller.
@@ -520,7 +525,6 @@ function lib(w) { //eslint-disable-line no-unused-vars
 
             this.hasScrollX     = this.maxScrollX < 0;
             this.hasScrollY     = this.maxScrollY < 0;
-
         },
         /**
         * To be overriden by the `PullToShowMore` plugin.
@@ -619,6 +623,9 @@ function lib(w) { //eslint-disable-line no-unused-vars
                 }
                 return;
             }
+
+            eventType(wrapper, 'input', this);
+            eventType(wrapper, 'focusin', this);
 
             // Touch interaction handlers
 
@@ -729,6 +736,10 @@ function lib(w) { //eslint-disable-line no-unused-vars
         */
         handleEvent: function (e) {
             switch (e.type) {
+                case 'focusin':
+                case 'input':
+                    this._scrollToInputElementIfNeeded(e.target);
+                    break;
                 case 'touchstart':
                 case 'pointerdown':
                 case 'MSPointerDown':
@@ -1356,49 +1367,28 @@ function lib(w) { //eslint-disable-line no-unused-vars
         _resetPosition: function (time) {
             time || (time = 0);
 
-            var x = this.x,
-                y = this.y,
-                custom;
+            var pos;
 
             // TODO: Find a way to decouple completely pullToRefresh and pullToLoadMore
             if (this._customResetPosition()) {
                 if (this.opts.pullToRefresh && this.isTriggeredPTR()) {
-                    custom = this.getResetPositionPTR();
+                    pos = this.getResetPositionPTR();
                 } else if (this.opts.pullToLoadMore && this.isTriggeredPTL()) {
-                    custom = this.resetPositionPTL();
+                    pos = this.resetPositionPTL();
                 }
             }
 
-            if (custom) {
-                y    = custom.y;
-                x    = custom.x;
-                time = custom.time || time;
-
+            if (pos) {
+                time = pos.time || time;
             } else {
-                // Outside boundaries top
-                if (!this.hasScrollY || this.y > 0) {
-                    y = 0;
-
-                // Outside boundaries bottom
-                } else if (this.y < this.maxScrollY) {
-                    y = this.maxScrollY;
-                }
-
-                // Outsede left
-                if (!this.hasScrollX || this.x > 0 ) {
-                    x = 0;
-
-                // Outside right
-                } else if (this.x < this.maxScrollX) {
-                    x = this.maxScrollX;
-                }
+                pos = this._getValidPosition(this.x, this.y);
             }
 
-            if (y === this.y && x === this.x) {
+            if (pos.y === this.y && pos.x === this.x) {
                 return false;
             }
 
-            this._scrollTo(x, y, time, EASING.regular);
+            this._scrollTo(pos.x, pos.y, time, EASING.regular);
             return true;
         },
 
@@ -1411,40 +1401,49 @@ function lib(w) { //eslint-disable-line no-unused-vars
          * @protected
          */
         _resetPositionIfOutOfBound: function (time) {
-            if ((this.opts.pullToRefresh && this.isTriggeredPTR()) ||
+            // native scrolling already handles the position correctly
+            // don't do anything if it's loading data
+            if (this.opts.useNativeScroller ||
+                    (this.opts.pullToRefresh && this.isTriggeredPTR()) ||
                     (this.opts.pullToLoadMore && this.isTriggeredPTL())) {
                 return false;
             }
 
             time || (time = 0);
 
-            var x = this.x,
-                y = this.y;
+            var pos = this._getValidPosition(this.x, this.y);
+            if (pos.y === this.y && pos.x === this.x) {
+                return false;
+            }
 
+            this._scrollTo(pos.x, pos.y, time, EASING.regular);
+            return true;
+        },
+
+        /**
+         * Returns a position that's within the boundary of scroller's
+         * wrapper based on the input position.
+         */
+        _getValidPosition: function(x, y) {
             // Outside boundaries top
-            if (!this.hasScrollY || this.y > 0) {
+            if (!this.hasScrollY || y > 0) {
                 y = 0;
 
             // Outside boundaries bottom
-            } else if (this.y < this.maxScrollY) {
+            } else if (y < this.maxScrollY) {
                 y = this.maxScrollY;
             }
 
             // Outsede left
-            if (!this.hasScrollX || this.x > 0 ) {
+            if (!this.hasScrollX || x > 0 ) {
                 x = 0;
 
             // Outside right
-            } else if (this.x < this.maxScrollX) {
+            } else if (x < this.maxScrollX) {
                 x = this.maxScrollX;
             }
 
-            if (y === this.y && x === this.x) {
-                return false;
-            }
-
-            this._scrollTo(x, y, time, EASING.regular);
-            return true;
+            return {x: x, y: y};
         },
 
         /**
@@ -1702,7 +1701,7 @@ function lib(w) { //eslint-disable-line no-unused-vars
         },
 
         /**
-         * check if scroller's size has changed
+         * Check if scroller's size has changed
          * for scroller height, we need to include PTL div if available to get the right height
          */
         _isScrollSizeChanged: function() {
@@ -1711,6 +1710,61 @@ function lib(w) { //eslint-disable-line no-unused-vars
             var scrollerHeight = ptl ? this.scrollerHeight + this.getPTLSize() : this.scrollerHeight;
             return (scrollerWidth !== this.scroller.offsetWidth) ||
                    (scrollerHeight !== this.scroller.offsetHeight);
+        },
+
+        /**
+         * Scroll element into view when element is out of view
+         * This is only for scroller that uses css transition to handle scrolling
+         */
+        _scrollIntoViewIfNeeded: function(elm) {
+            if (this.opts.useCSSTransition) {
+                var x = this.x,
+                    y = this.y,
+                    topOffset = this.wrapper.getBoundingClientRect().top,
+                    elmBot = elm.getBoundingClientRect().bottom - topOffset,
+                    elmTop = elm.getBoundingClientRect().top - topOffset,
+                    elmHeight = elmBot - elmTop,
+                    pos;
+
+                // Stop scrolling to not mess up position calculation
+                this._stopMomentum();
+                this._isScrolling = false;
+
+                // Only scroll when element is out of view
+                if (elmBot > this.wrapperHeight || elmBot < 0) {
+                    y = y - elmTop + (this.wrapperHeight - elmHeight) / 2;
+                    pos = this._getValidPosition(x, y);
+                    this._translate(pos.x, pos.y);
+                }
+            }
+        },
+
+        _isInputElement: function(elm) {
+            return INPUT_TAGS.indexOf(elm.tagName) !== -1;
+        },
+
+        _scrollToInputElementIfNeeded: function(elm) {
+            if (this._isInputElement(elm)) {
+                this._scrollIntoViewIfNeeded(elm);
+            }
+        },
+
+        /**
+         * Check if element is visible and occupying space on the page offsetParent is null when
+         * - its ancestor or itself has display:none
+         * - it has position:fixed
+         *   - for this case we also check the dimensions
+         *
+         * This is inaccurate when user intentionally sets dimensions to 0 and uses position:fixed,
+         * but that would be unlikely. This is much more performant than getComputedStyle to
+         * check display property.
+         *
+         * Using on this.scroller, this should work all the time since it's highly unlikely that
+         * its position would be set to position:fixed and that would make the whole scroller unscrollable.
+         */
+        _isScrollerVisible: function() {
+            var el = this.scroller;
+            return !!(el.offsetParent || el.offsetHeight || el.offsetWidth);
         },
 
         /**
@@ -1739,11 +1793,10 @@ function lib(w) { //eslint-disable-line no-unused-vars
         resize: function () {
             var self = this;
             RAF(function () {
-                // NOTE: Check the translate(0,0), we do it so when we get narrow width,
-                // The scroll position may not exist anymore
-                // We should be able to calculate the new (x,y) position
-                self._translate(0,0);
+                // update size
                 self._setSize();
+                // position might be invalid after resizing, move it to the edge if so
+                self._resetPositionIfOutOfBound();
             });
         },
 
@@ -1758,13 +1811,18 @@ function lib(w) { //eslint-disable-line no-unused-vars
             var self = this;
             if (!this._rafRefresh) {
                 this._rafRefresh = RAF(function () { // debounce the refresh
-                    var isScrollSizeChanged = self._isScrollSizeChanged();
-                    self._setSize();
-                    if (isScrollSizeChanged) {
-                        self._resetPositionIfOutOfBound(0);
+                    // only refresh when scroller is visible and occupying space
+                    if (self._isScrollerVisible()) {
+
+                        var isScrollSizeChanged = self._isScrollSizeChanged();
+                        self._setSize();
+                        if (isScrollSizeChanged) {
+                            self._resetPositionIfOutOfBound();
+                        }
+
+                        self._fire('_refresh');
+                        self._rafRefresh = null;
                     }
-                    self._fire('_refresh');
-                    self._rafRefresh = null;
                 });
             }
         },

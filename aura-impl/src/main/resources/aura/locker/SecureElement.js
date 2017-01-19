@@ -59,6 +59,12 @@ function isValidAttributeName(raw, name, prototype, caseInsensitiveAttributes) {
         return true;
     }
 
+    // Special case Label element's 'for' attribute. It called 'htmlFor' on prototype but
+    // needs to be addressable as 'for' via accessors like .attributes/getAttribute()/setAtribute()
+    if(raw.tagName === "LABEL"  && name.toLowerCase() === "for"){
+        return true;
+    }
+
     return false;
 }
 
@@ -108,6 +114,12 @@ var domPurifyConfig = {
                      "target"]
 };
 
+function propertyIsSupported(target, property) {
+    // If the SecureElement prototype does not have the property directly on it then this
+    // is an attempt to get a property that we do not support
+    return Object.getPrototypeOf(target).hasOwnProperty(property);
+}
+
 function SecureElement(el, key) {
 	"use strict";
 
@@ -143,13 +155,104 @@ function SecureElement(el, key) {
 	// Segregate prototypes by their locker
 	var prototypes = KEY_TO_PROTOTYPES.get(key);
 	if (!prototypes) {
-		prototypes = new Map();
-		KEY_TO_PROTOTYPES.set(key, prototypes);
+	    prototypes = new Map();
+	    KEY_TO_PROTOTYPES.set(key, prototypes);
 	}
 
-	var prototype = prototypes.get(tagName);
-	if (!prototype) {
-		prototype = Object.create(null);
+	var prototypeInfo = prototypes.get(tagName);
+	if (!prototypeInfo) {
+	    var expandoCapturingHandler;
+        var elementPrototypeProxy;
+	    if (SecureObject.useProxy()) {
+	        var basePrototype = Object.getPrototypeOf(el);
+
+	        // The magic to make SecureElements appear to be Elements
+	        elementPrototypeProxy = new Proxy({}, {
+                "getPrototypeOf": function() {
+                    return basePrototype;
+                },
+
+                "setPrototypeOf": function() {
+                    throw new Error("Illegal attempt to set the prototype of: " + basePrototype);
+                }
+            });                
+
+	        expandoCapturingHandler = {
+    	        "get": function(target, property) {
+	                if (property in basePrototype) {
+	                    return propertyIsSupported(target, property) ? target[property] : undefined;
+	                }
+
+	                // Expando - retrieve it from a private locker scoped object
+	                var raw = ls_getRef(target, key);
+	                var data = ls_getData(raw, key);
+	                return data ? data[property] : undefined;
+    	        },
+
+                "set": function(target, property, value) {
+                    if (property in basePrototype) {
+                        if (!propertyIsSupported(target, property)) {
+                            throw new Error("SecureElement does not allow access to " + property);
+                        }
+
+                        target[property] = value;
+                        return true;
+                    }   
+
+                    // Expando - store it from a private locker scoped object
+                    var raw = ls_getRef(target, key);
+                    var data = ls_getData(raw, key);
+                    if (!data) {
+                        data = {};
+                        ls_setData(raw, key, data);
+                    }
+                    
+                    data[property] = value;
+                    
+                    return true;
+                },
+
+                "has": function(target, property) {
+                    if (property in basePrototype) {
+                        return true;
+                    }
+                    var raw = ls_getRef(target, key);
+                    var data = ls_getData(raw, key);
+                    return !!data && property in data;
+                },
+
+                "deleteProperty": function(target, property) {
+                    var raw = ls_getRef(target, key);
+                    var data = ls_getData(raw, key);
+                    if (data && property in data) {
+                        return delete data[property];
+                    }
+                    return delete target[property];
+                },
+
+                "ownKeys": function(target) {
+                    var raw = ls_getRef(target, key);
+                    var data = ls_getData(raw, key);
+                    var keys = Object.keys(raw);
+                    if (data) {
+                        keys = keys.concat(Object.keys(data));
+                    }
+                    return keys;
+                },
+
+                "getOwnPropertyDescriptor": function(target, property) {
+                    var desc = Object.getOwnPropertyDescriptor(target, property);
+                    if (!desc) {
+                        var raw = ls_getRef(target, key);
+                        var data = ls_getData(raw, key);
+                        desc = Object.getOwnPropertyDescriptor(data,  property);
+                    }
+                    return desc;
+                }
+    	    };
+	    }
+	    
+		var prototype = Object.create(elementPrototypeProxy || null);
 
 		// "class", "id", etc global attributes are special because they do not directly correspond to any property
 		var caseInsensitiveAttributes = { 
@@ -172,8 +275,13 @@ function SecureElement(el, key) {
 			}
 		});
 		
-		prototypes.set(tagName, prototype);
-
+		prototypeInfo = {
+            prototype: prototype,
+            expandoCapturingHandler: expandoCapturingHandler
+        };
+	
+		prototypes.set(tagName, prototypeInfo);
+		
 		var prototypicalInstance = Object.create(prototype);
 		ls_setRef(prototypicalInstance, el, key);
 
@@ -186,11 +294,15 @@ function SecureElement(el, key) {
 		// Conditionally add things that not all Node types support
 		if ("attributes" in el) {
 
-			// DCHASMAN TODO We need Proxy (208) to fully implement the syntax/sematics of Element.attributes!
+			// DCHASMAN TODO We need Proxy (208) to fully implement the syntax/semantics of Element.attributes!
 
 			tagNameSpecificConfig["attributes"] = SecureObject.createFilteredPropertyStateless("attributes", prototype, {
 				writable : false,
 				afterGetCallback : function(attributes) {
+				    if (!attributes) {
+				        return attribute;
+				    }
+				    
 					// Secure attributes
 					var secureAttributes = [];
 					var raw = SecureObject.getRaw(this, prototype);
@@ -284,11 +396,16 @@ function SecureElement(el, key) {
 		});
 	}
 
-	o = Object.create(prototype);
+	o = Object.create(prototypeInfo.prototype);
 
+    if (prototypeInfo.expandoCapturingHandler) {
+        ls_setRef(o, el, key);
+        o = new Proxy(o, prototypeInfo.expandoCapturingHandler);
+    }
+    
 	ls_setRef(o, el, key);
 	ls_addToCache(el, o, key);
-
+    
 	return o;
 }
 
@@ -416,15 +533,15 @@ SecureElement.addStandardMethodAndPropertyOverrides = function(prototype, caseIn
 			}
 		},
 
-        getAttribute: SecureElement.createAttributeAccessMethodConfig("getAttribute", prototype, caseInsensitiveAttributes),
-        getAttributeNS: SecureElement.createAttributeAccessMethodConfig("getAttributeNS", prototype, caseInsensitiveAttributes, true),
+        getAttribute: SecureElement.createAttributeAccessMethodConfig("getAttribute", prototype, caseInsensitiveAttributes, null),
+        getAttributeNS: SecureElement.createAttributeAccessMethodConfig("getAttributeNS", prototype, caseInsensitiveAttributes, null, true),
         
-        setAttribute: SecureElement.createAttributeAccessMethodConfig("setAttribute", prototype, caseInsensitiveAttributes),
-        setAttributeNS: SecureElement.createAttributeAccessMethodConfig("setAttributeNS", prototype, caseInsensitiveAttributes, true)
+        setAttribute: SecureElement.createAttributeAccessMethodConfig("setAttribute", prototype, caseInsensitiveAttributes, undefined),
+        setAttributeNS: SecureElement.createAttributeAccessMethodConfig("setAttributeNS", prototype, caseInsensitiveAttributes, undefined, true)
 	});
 };
 
-SecureElement.createAttributeAccessMethodConfig = function(methodName, prototype, caseInsensitiveAttributes, namespaced) {
+SecureElement.createAttributeAccessMethodConfig = function(methodName, prototype, caseInsensitiveAttributes, invalidAttributeReturnValue, namespaced) {
 	return {
     	value: function() {
 			var raw = SecureObject.getRaw(this, prototype);
@@ -432,7 +549,8 @@ SecureElement.createAttributeAccessMethodConfig = function(methodName, prototype
     		
     		var name = args[namespaced ? 1 : 0];
             if (!isValidAttributeName(raw, name, prototype, caseInsensitiveAttributes)) {
-                throw new $A.auraError(this + " does not permit setting the " + name.toLowerCase() + " attribute!");
+            	$A.warning(this + " does not allow getting/setting the " + name.toLowerCase() + " attribute, ignoring!");
+            	return invalidAttributeReturnValue;
             }
 
     		return raw[methodName].apply(raw, args);

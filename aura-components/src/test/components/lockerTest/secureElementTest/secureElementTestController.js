@@ -30,13 +30,14 @@
         var auraId = event.getParam("arguments").auraId;
         var elementPropertiesWhitelist = event.getParam("arguments").elementPropertiesWhitelist;
         var elementPropertiesBlacklist = event.getParam("arguments").elementPropertiesBlacklist;
-        var element = cmp.find(auraId).getElement();
+        var c = cmp.find(auraId);
+        var element = c.getElement();
 
         elementPropertiesWhitelist.forEach(function(name) {
             testUtils.assertTrue(name in element, "Expected property '" + name + "' to be a property on SecureElement");
         });
         elementPropertiesBlacklist.forEach(function(name) {
-            testUtils.assertFalse(name in element, "Expected property '" + name + "' to not be exposed on SecureElement");
+            testUtils.assertUndefined(element[name], "Expected property '" + name + "' to return undefined on SecureElement");
         });
     },
 
@@ -50,7 +51,7 @@
             testUtils.assertTrue(name in element, "Expected property '" + name + "' to be a property on SecureElement");
         });
         htmlPropertiesBlacklist.forEach(function(name) {
-            testUtils.assertFalse(name in element, "Expected property '" + name + "' to not be exposed on SecureElement");
+            testUtils.assertFalse(element[name], "Expected property '" + name + "' to return undefined on SecureElement");
         });
     },
 
@@ -412,5 +413,13 @@
         testUtils.assertTrue(div.childNodes.item(1) === splitText, "2nd childnode on div should be what was returned from splitText()");
         testUtils.assertStartsWith("SecureElement", splitText.toString(), "Text.splitText() should return a SecureElement");
         testUtils.assertStartsWith("SecureElement", text.toString(), "Original text should be a SecureElement");
+    },
+
+    testGetSetInvalidAttributes: function(cmp) {
+        var testUtils = cmp.get("v.testUtils");
+        var button = document.createElement("button");
+        testUtils.assertNull(button.getAttribute("href"), "Should have got null when trying to access invalid attributes");
+        testUtils.assertUndefined(button.setAttribute("href", "/foo"), "Should return undefined when trying to set invalid attributes on dom element");
+        testUtils.assertNull(button.getAttribute("href"), "Accessing invalid attribute values should continue to return undefined");
     }
 })

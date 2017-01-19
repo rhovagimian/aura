@@ -426,6 +426,7 @@ AuraComponentService.prototype.createComponents = function(components, callback)
  * @export
  */
 AuraComponentService.prototype.newComponent = function(config, attributeValueProvider, localCreation, doForce){
+    $A.deprecated("$A.newCmp and $A.componentService.newComponent are no longer supported.","Use '$A.createComponent();'.","2017/01/06");
     return this.newComponentDeprecated(config, attributeValueProvider, localCreation, doForce);
 };
 
@@ -442,6 +443,8 @@ AuraComponentService.prototype.newComponent = function(config, attributeValuePro
  * @export
  */
 AuraComponentService.prototype.newComponentDeprecated = function(config, attributeValueProvider, localCreation, doForce){
+    $A.deprecated("$A.newCmpDeprecated and $A.componentService.newComponentDeprecated are not supported.","Use '$A.createComponent();'.","2017/01/06");
+
     $A.assert(config, "config is required in ComponentService.newComponentDeprecated(config)");
 
     if ($A.util.isArray(config)){
@@ -494,12 +497,12 @@ AuraComponentService.prototype.newComponentDeprecated = function(config, attribu
         // Server should handle the case of an unknown def fetched "lazily"
         if(!$A.clientService.allowAccess(def) /* && currentAccess  */) {
             var context=$A.getContext();
-            var contextCmp = context && context.getCurrentAccess()+"";
+            var contextCmp = context && context.getCurrentAccess();
             var message="Access Check Failed! AuraComponentService.newComponentDeprecated(): '" +
                     (def && def.getDescriptor().getQualifiedName()) + "' is not visible to '" +
                     contextCmp + "'.";
             var ae = new $A.auraError(message);
-            ae.component = contextCmp;
+            ae.component = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
             if(context.enableAccessChecks) {
                 if(context.logAccessFailures){
                     $A.error(null, ae);
@@ -675,6 +678,8 @@ AuraComponentService.prototype.hasComponentClass = function(descriptor) {
  * @export
  */
 AuraComponentService.prototype.newComponentAsync = function(callbackScope, callback, config, attributeValueProvider, localCreation, doForce, forceServer) {
+    $A.deprecated("$A.newCmpAsync and $A.componentService.newComponentAsync are not supported.","Use '$A.createComponent();'.","2017/01/06");
+
     $A.assert(config, "ComponentService.newComponentAsync(): 'config' must be a valid Object.");
     $A.assert($A.util.isFunction(callback),"ComponentService.newComponentAsync(): 'callback' must be a Function pointer.");
 
@@ -736,10 +741,10 @@ AuraComponentService.prototype.newComponentAsync = function(callbackScope, callb
                     collectComponent(this["newComponentDeprecated"](configItem, attributeValueProvider, localCreation, doForce),"SUCCESS","",i);
                 }else{
                     var context=$A.getContext();
-                    var contextCmp = context && context.getCurrentAccess()+"";
+                    var contextCmp = context && context.getCurrentAccess();
                     var message="Access Check Failed! AuraComponentService.newComponentAsync(): '" + def.getDescriptor().getQualifiedName() + "' is not visible to '" + contextCmp + "'.";
                     var ae = new $A.auraError(message);
-                    ae.component = contextCmp;
+                    ae.component = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
                     if(context.enableAccessChecks) {
                         if(context.logAccessFailures){
                             $A.error(null, ae);
@@ -984,10 +989,10 @@ AuraComponentService.prototype.getDefinition = function(descriptor, callback) {
     if (def) {
         if(!$A.clientService.allowAccess(def)) {
             var context=$A.getContext();
-            var contextCmp = context&&context.getCurrentAccess()+"";
+            var contextCmp = context&&context.getCurrentAccess();
             var message="Access Check Failed! ComponentService.getDef():'" + def.getDescriptor().toString() + "' is not visible to '" + contextCmp + "'.";
             var ae = new $A.auraError(message);
-            ae.component = contextCmp;
+            ae.component = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
             if(context.enableAccessChecks) {
                 if(context.logAccessFailures){
                     $A.error(null, ae);
@@ -1066,10 +1071,10 @@ AuraComponentService.prototype.getDef = function(descriptor) {
 
     if (def && !$A.clientService.allowAccess(def)) {
         var context=$A.getContext();
-        var contextCmp = context&&context.getCurrentAccess()+"";
+        var contextCmp = context&&context.getCurrentAccess();
         var message="Access Check Failed! ComponentService.getDef():'" + def.getDescriptor().toString() + "' is not visible to '" + contextCmp + "'.";
         var ae = new $A.auraError(message);
-        ae.component = contextCmp;
+        ae.component = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
         if(context.enableAccessChecks){
             if(context.logAccessFailures){
                 $A.error(null, ae);
@@ -1522,10 +1527,10 @@ AuraComponentService.prototype.createComponentPrivAsync = function (config, call
             callback(new classConstructor(config, forceClientCreation), 'SUCCESS');
         }else{
             var context=$A.getContext();
-            var contextCmp = context && context.getCurrentAccess()+"";
+            var contextCmp = context && context.getCurrentAccess();
             var message="Access Check Failed! AuraComponentService.createComponent(): '" + descriptor + "' is not visible to '" + contextCmp + "'.";
             var ae = new $A.auraError(message);
-            ae.component = contextCmp;
+            ae.component = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
             if(context.enableAccessChecks) {
                 if(context.logAccessFailures){
                     $A.error(null, ae);
@@ -1555,10 +1560,10 @@ AuraComponentService.prototype.createComponentPriv = function (config) {
         return new classConstructor(config);
     }else{
         var context=$A.getContext();
-        var contextCmp = context && context.getCurrentAccess()+"";
+        var contextCmp = context && context.getCurrentAccess();
         var message="Access Check Failed! AuraComponentService.createComponentFromConfig(): '" + descriptor + "' is not visible to '" + contextCmp + "'.";
         var ae = new $A.auraError(message);
-        ae.component = contextCmp;
+        ae.component = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
         if(context.enableAccessChecks) {
             if(context.logAccessFailures){
                 $A.error(null, ae);

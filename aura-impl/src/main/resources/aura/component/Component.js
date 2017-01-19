@@ -179,7 +179,9 @@ function Component(config, localCreation) {
     }
 
     this._destroying = false;
-    this.fire("init");
+    if(this.getDef().hasInit()) {
+        this.fire("init");
+    }
 }
 
 /**
@@ -785,6 +787,8 @@ Component.prototype.destroy = function(async) {
             }
         }
 
+        $A.eventService.removeHandlersByComponentId(globalId);
+
         if (this.model) {
             this.model.destroy(async);
         }
@@ -813,13 +817,16 @@ Component.prototype.destroy = function(async) {
             superComponent.destroy(async);
         }
 
-// JBUCH: HALO: TODO: FIXME
-//        var references=this.references;
-//        if(references){
-//            for(var reference in references){
-//                references[reference].destroy();
-//            }
-//        }
+        var references=this.references;
+        for(key in references){
+            if(references[key]){
+                for(var access in references[key]){
+                    references[key][access].destroy();
+                    delete references[key][access];
+                }
+            }
+            delete references[key];
+        }
 
         // Swap in InvalidComponent prototype to keep us from having to add
         // validity checks all over the place
@@ -1269,44 +1276,44 @@ Component.prototype.set = function(key, value, ignoreChanges) {
 /**
  * Add a warning in the console if a list of components is not rendered by the end
  * of the current event loop. This pattern usually lead to memory leaks.
- * 
+ *
  * @param {Component[]} prevComp The list of component that has been replaced
  * @param {string} key The attribute key
  */
 Component.prototype.trackComponentReplacement = function(prevCmps, key) {
-    // Filter valid and not rendered components 
-    var potentialLeak = []; 
+    // Filter valid and not rendered components
+    var potentialLeak = [];
     for (var i = 0; i < prevCmps.length; i++) {
         if (prevCmps[i].isValid() && !prevCmps[i].isRendered()) {
             potentialLeak.push(prevCmps[i]);
         }
     }
-    
+
     if (potentialLeak.length) {
         var owner = this;
         var handler = function() {
-            // Compute again if the some components are still not rendered 
+            // Compute again if the some components are still not rendered
             var actualLeak = [];
             for (var j = 0; j < potentialLeak.length; j++) {
                 if (potentialLeak[j].isValid() && !potentialLeak[j].isRendered()) {
                     actualLeak.push(potentialLeak[j]);
                 }
             }
-            
+
             if (actualLeak.length) {
                 $A.warning([
                     '[Performance degradation] ',
                     actualLeak.length + ' component(s) in ' + owner.getName() + ' ["' + owner.getGlobalId() + '"] ',
                     'have been created and removed before being rendered when calling cmp.set("' + key + '").\n',
-                    'More info: https://sfdc.co/performance-aura-component-set' 
+                    'More info: https://sfdc.co/performance-aura-component-set'
                 ].join(''));
             }
         };
-        
+
         // This event is triggered by the renderingService.rerenderDirty method
         $A.eventService.addHandlerOnce({
-            'event': 'aura:doneRendering', 
-            'globaId': 'componentService', 
+            'event': 'aura:doneRendering',
+            'globalId': 'componentService',
             'handler': handler
         });
     }
@@ -1549,10 +1556,10 @@ Component.prototype.getEvent = function(name) {
     }
     if (!$A.clientService.allowAccess(eventDef,this)) {
         var context=$A.getContext();
-        var contextCmp = context && context.getCurrentAccess()+"";
+        var contextCmp = context && context.getCurrentAccess();
         var message="Access Check Failed! Component.getEvent():'" + name + "' of component '" + this + "' is not visible to '" + contextCmp + "'.";
         var ae = new $A.auraError(message);
-        ae.component = contextCmp;
+        ae.component = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
         if(context.enableAccessChecks) {
             if(context.logAccessFailures){
                 $A.error(null, ae);
@@ -1671,7 +1678,7 @@ Component.prototype.toString = function() {
  * @private
  */
 Component.prototype.toJSON = function() {
-	return {
+    return {
         "globalId": this.globalId,
         "isValid": this.isValid()
     };
@@ -1922,8 +1929,10 @@ Component.prototype.setupValueProviders = function(customValueProviders) {
     vp["null"]=null;
     vp["version"] = this.version ? this.version : this.getVersionInternal();
 
-    for (var key in customValueProviders) {
-        this.addValueProvider(key,customValueProviders[key]);
+    if(customValueProviders) {
+        for (var key in customValueProviders) {
+            this.addValueProvider(key,customValueProviders[key]);
+        }
     }
 };
 
@@ -1952,6 +1961,17 @@ Component.prototype.setupComponentDef = function(config) {
 
     // propagating locker key when possible
     $A.lockerService.trust(this.componentDef, this);
+    // aura:html is syntactic sugar for document.createElement() and the resulting elements need to be directly visible to the container
+    // otherwise no code would be able to manipulate them
+    if (this.componentDef.descriptor.getFullName() === "aura:html") {
+        var owner = this.getOwner();
+        var ownerName = owner.getName();
+        while (ownerName === "aura:iteration" || ownerName === "aura:if") {
+            owner = owner.getOwner();
+            ownerName = owner.getName();
+        }
+        $A.lockerService.trust(owner, this);
+    }
 };
 
 Component.prototype.createComponentStack = function(facets, valueProvider){
@@ -2031,10 +2051,10 @@ Component.prototype.setupSuper = function(configAttributes) {
                     var facetDef = AttributeSet.getDef(facets[i]["descriptor"], this.componentDef);
                     if (!$A.clientService.allowAccess(facetDef[0], facetDef[1])) {
                         var context=$A.getContext();
-                        var contextCmp = context && context.getCurrentAccess()+"";
+                        var contextCmp = context && context.getCurrentAccess();
                         var message="Access Check Failed! Component.setupSuper():'" + facets[i]["descriptor"] + "' of component '" + this + "' is not visible to '" + contextCmp + "'.";
                         var ae = new $A.auraError(message);
-                        ae.component = contextCmp;
+                        ae.component = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
                         if(context.enableAccessChecks) {
                             if(context.logAccessFailures){
                                 $A.error(null, ae);
@@ -2131,10 +2151,10 @@ Component.prototype.setupAttributes = function(cmp, config, localCreation) {
             var def=AttributeSet.getDef(attribute,cmp.getDef());
             if(!$A.clientService.allowAccess(def[0],def[1])) {
                 var context=$A.getContext();
-                var contextCmp = context && context.getCurrentAccess()+"";
+                var contextCmp = context && context.getCurrentAccess();
                 var message="Access Check Failed! Component.setupAttributes():'" + attribute + "' of component '" + cmp + "' is not visible to '" + contextCmp + "'.";
                 var ae = new $A.auraError(message);
-                ae.component = contextCmp;
+                ae.component = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
                 if(context.enableAccessChecks){
                     if(context.logAccessFailures){
                         $A.error(null, ae);
@@ -2291,10 +2311,10 @@ Component.prototype.getMethodHandler = function(methodDef){
     return function(/*param1,param2,paramN*/){
         if(!$A.clientService.allowAccess(methodDef,component)) {
             var context = $A.getContext();
-            var contextCmp = context && context.getCurrentAccess()+"";
+            var contextCmp = context && context.getCurrentAccess();
             var message = "Access Check Failed! Component.method():'" + methodDef.getDescriptor().toString() + "' is not visible to '" + contextCmp + "'.";
             var ae = new $A.auraError(message);
-            ae.component = contextCmp;
+            ae.component = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
             if (context.enableAccessChecks) {
                 if (context.logAccessFailures) {
                     $A.error(null, ae);
@@ -2633,6 +2653,11 @@ Component.prototype.setProvided = function(realComponentDef, attributes) {
     $A.assert(!realComponentDef.hasRemoteDependencies() || (realComponentDef.hasRemoteDependencies() && this.partialConfig),
             "Client provided component cannot have server dependencies: " + realComponentDef);
 
+    // Definition did not change (if.cmp for example) so do not do any extra work.
+    if(this.componentDef === realComponentDef && !attributes) {
+        return;
+    }
+
     // JBUCH: HALO: TODO: FIND BETTER WAY TO RESET THESE AFTER PROVIDER INJECTION
     this.componentDef = realComponentDef;
     this.attributeSet.merge(attributes, realComponentDef.getAttributeDefs());
@@ -2653,7 +2678,7 @@ Component.prototype.associateRenderedBy = function(cmp, element) {
  * Resolves a locator that targets targetCmp from within this component
  * @param targetCmp
  * @param includeMetadata
- * 
+ *
  * @returns The locator object which contains the target & scope IDs and locator context resolved
  */
 Component.prototype.getLocator = function(targetCmp, includeMetadata) {

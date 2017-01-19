@@ -143,8 +143,8 @@ function AuraClientService () {
     this.namespaces={internal:{},privileged:{}};
     this.lastSendTime = Date.now();
 
-    // TODO: @dval We should send this from the server, but for LithgnigoutOut apps is a non-trivial change,
-    // so for the time being I hardcoded the resource path here to ensure we can lazu fetch them.
+    // TODO: @dval We should send this from the server, but for LightningOut apps is a non-trivial change,
+    // so for the time being I hard-coded the resource path here to ensure we can lazy fetch them.
     this.clientLibraries = {
         "walltime" : { resourceUrl : "/auraFW/resources/{fwuid}/walltime-js/walltime.min.js" },
         "ckeditor" : { resourceUrl : "/auraFW/resources/{fwuid}/ckeditor/ckeditor-4.x/rel/ckeditor.js" }
@@ -251,7 +251,7 @@ AuraClientService.BOOT_TIMER_DURATION = 30000;
  * Number of consecutive reloads without fwk + app finishing the boot sequence. When this is exceeded
  * the user is notified of an error and prompted to reload.
  */
-AuraClientService.INCOMPLETE_BOOT_THRESHOLD = 10;
+AuraClientService.INCOMPLETE_BOOT_THRESHOLD = 5;
 
 /**
  * Query parameter to ensure a server trip even with appcache enabled. Servlet performs
@@ -284,6 +284,10 @@ AuraClientService.CONSECUTIVE_RELOAD_COUNTER_KEY = "__RELOAD_COUNT";
  */
 AuraClientService.prototype.setQueueSize = function(queueSize) {
     var auraXHR;
+    if (queueSize === undefined) {
+        // use default value if config doesn't specify it, i.e. lightning out
+        queueSize = 4;
+    }
     if (queueSize < 2) {
         throw new $A.auraError("number of XHRs must be at least 2, is " + queueSize, null, $A.severity.QUIET);
     }
@@ -302,6 +306,10 @@ AuraClientService.prototype.setQueueSize = function(queueSize) {
  * @private
  */
 AuraClientService.prototype.setXHRExclusivity = function(xhrExclusivity) {
+    if (xhrExclusivity === undefined) {
+        // use default value if config doesn't specify it, i.e. lightning out
+        xhrExclusivity = false;
+    }
     this.xhrExclusivity = xhrExclusivity;
 };
 
@@ -832,7 +840,7 @@ AuraClientService.prototype.hardRefresh = function() {
     var cacheBustKey = "?" + AuraClientService.CACHE_BUST_QUERY_PARAM + "=";
 
     if (this.shouldPreventReload()) {
-        this.showErrorDialogWithReload(new AuraError("We got stuck in a loop while loading the page. Please click Refresh."));
+        this.showErrorDialogWithReload(new AuraError("We can't load the page. Please click Refresh."));
         return;
     }
 
@@ -887,7 +895,7 @@ AuraClientService.prototype.dumpCachesAndReload = function(force) {
 
     if (this.reloadPointPassed || force) {
         if (this.shouldPreventReload()) {
-            this.showErrorDialogWithReload(new AuraError("We got stuck in a loop while loading the page. Please click Refresh."));
+            this.showErrorDialogWithReload(new AuraError("We can't load the page. Please click Refresh."));
         } else {
             this.reloadFunction();
         }
@@ -1367,9 +1375,9 @@ AuraClientService.prototype.loadTokenFromStorage = function() {
         return storage.adapter.getItems([AuraClientService.TOKEN_KEY])
             .then(function(items) {
                 if (items[AuraClientService.TOKEN_KEY]) {
-                    return items[AuraClientService.TOKEN_KEY]["value"];
+                    return items[AuraClientService.TOKEN_KEY]["value"]["token"];
                 }
-                return undefined;
+                return Promise["reject"](new Error("no token found in storage"));
             });
     }
     return Promise["reject"](new Error("no Action storage"));
@@ -2996,8 +3004,7 @@ AuraClientService.prototype.processResponses = function(auraXHR, responseMessage
     var action, actionResponses, response, dupes;
     var token = responseMessage["token"];
     if (token) {
-        this._token = token;
-        this.saveTokenToStorage(); // async fire-and-forget
+        this.setToken(token, true);
     }
     var context=$A.getContext();
     var priorAccess=context.getCurrentAccess();
@@ -3476,9 +3483,10 @@ AuraClientService.prototype.enqueueAction = function(action, background) {
  * @param {Action} action - target action
  * @return {Promise} a promise which is resolved or rejected depending on the state of the action
  * @export
+ * @deprecated
  */
 AuraClientService.prototype.deferAction = function (action) {
-    $A.warning("$A.deferAction is broken, do not use it!");
+    $A.deprecated("$A.deferAction is broken, do not use it.","Use '$A.enqueueAction(action);'.","2017/01/06");
     var acs = this;
     var promise = new Promise(function(success, error) {
 

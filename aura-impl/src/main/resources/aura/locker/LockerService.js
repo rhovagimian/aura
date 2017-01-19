@@ -36,7 +36,7 @@ function LockerService() {
     //#include aura.locker.SecureComponentRef
 
 	var lockers = [];
-	var keyToEnvironmentMap = {};
+    var keyToEnvironmentMap = {};
 	var lockerShadows;
 
 	// This whilelist represents reflective ECMAScript APIs or reflective DOM APIs
@@ -113,6 +113,24 @@ function LockerService() {
 	];
 
 	var nsKeys = {};
+	
+    var workerFrame = window.document.getElementById("safeEvalWorker");
+    var safeEvalWindow = workerFrame && workerFrame.contentWindow;
+    var typeToOtherRealmType;
+    
+    // Wire up bidirectional back references from one realm to the other for cross realm instanceof checks
+    if (safeEvalWindow) {
+        typeToOtherRealmType = new Map();
+        var types = Object.keys(SecureWindow.metadata["prototypes"]["Window"]).concat(["Blob", "File", "FormData"]);
+        types.forEach(function(name) {
+            var mainInstance = window[name];
+            var safeEvalInstance = safeEvalWindow[name];
+            if (mainInstance && safeEvalInstance) {
+                typeToOtherRealmType.set(safeEvalInstance, mainInstance);
+                typeToOtherRealmType.set(mainInstance, safeEvalInstance);
+            }
+        });
+    }
     
 	// defining LockerService as a service
 	var service = {
@@ -140,14 +158,14 @@ function LockerService() {
 		},
 
 		getEnv : function(key, doNotCreate) {
-			var psuedoKeySymbol = JSON.stringify(key);
-			var env = keyToEnvironmentMap[psuedoKeySymbol];
-			if (!env && !doNotCreate) {
-				env = keyToEnvironmentMap[psuedoKeySymbol] = SecureWindow(window, key, whitelist);
-			}
+            var psuedoKeySymbol = JSON.stringify(key);
+            var env = keyToEnvironmentMap[psuedoKeySymbol];
+            if (!env && !doNotCreate) {
+                env = keyToEnvironmentMap[psuedoKeySymbol] = SecureWindow(window, key, whitelist);
+            }
 
-			return env;
-		},
+            return env;
+        },
 
         getKeyForNamespace : function(namespace) {
             // Get the locker key for this namespace
@@ -198,11 +216,16 @@ function LockerService() {
 				}
 			}
 			
+			var returnValue = window['$$safe-eval$$'](code, sourceURL, skipPreprocessing, envRec, lockerShadows);
+			
 			var locker = {
-				"$envRec": envRec,
-				"$result": window['$$safe-eval$$'](code, sourceURL, skipPreprocessing, envRec, lockerShadows)
+				globals: envRec,
+                returnValue: returnValue
 			};
 
+			locker["globals"] = locker.globals;
+            locker["returnValue"] = locker.returnValue;
+			
 			Object.freeze(locker);
 			lockers.push(locker);
 			
@@ -218,7 +241,7 @@ function LockerService() {
 
 		destroyAll : function() {
 			lockers = [];
-			keyToEnvironmentMap = [];
+		    keyToEnvironmentMap = [];
 		},
 
 		wrapComponent : function(component) {
@@ -264,6 +287,15 @@ function LockerService() {
 		unwrap : ls_unwrap,
 
 		trust : ls_trust,
+		
+		instanceOf : function(value, type) {
+		    if (value instanceof type) {
+		        return true;
+		    } else {
+		        var otherRealmType = typeToOtherRealmType && typeToOtherRealmType.get(type);
+		        return otherRealmType && value instanceof otherRealmType;
+		    }
+		},
 
 		showLockedNodes : function showLockedNodes(root) {
 			if (!root) {
@@ -283,11 +315,14 @@ function LockerService() {
 	};
 
 	// Exports
+    service["create"] = service.create;
 	service["createForDef"] = service.createForDef;
 	service["getEnvForSecureObject"] = service.getEnvForSecureObject;
+    service["getKeyForNamespace"] = service.getKeyForNamespace;
 	service["trust"] = service.trust;
 	service["showLockedNodes"] = service.showLockedNodes;
 	service["wrapComponent"] = service.wrapComponent;
+    service["instanceOf"] = service.instanceOf;
 
 	Object.freeze(service);
 

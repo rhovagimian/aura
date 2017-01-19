@@ -27,7 +27,7 @@
     <aura:attribute access="GLOBAL" name="multiple" type="Boolean" default="false" description="Specifies whether the input is a multiple select. Default value is &#8220;false&#8221;."/>
 
     <!-- The size attribute behaviors weird in Google Chrome and Safari. -->
-    <aura:attribute access="PRIVILEGED" name="size" type="Integer" default="1" description="The number of options displayed at one time. Default value is &#8220;1&#8221;."/>
+    <aura:attribute access="PRIVILEGED" name="size" type="Integer" default="{!v.multiple ? 7 : 1}" description="The number of options displayed at one time. Default value is &#8220;1&#8221;."/>
 
     <aura:attribute name="useMenu" type="Boolean" default="false" description="Use a ui:menu to show the options, only works with v.options provided items."/>
 
@@ -48,7 +48,7 @@
     <aura:if isTrue="{!v.useMenu}">
         <ui:menu class="{!v.class}">
             <ui:menuTriggerLink aura:id="selectTrigger" class="select" disabled="{!v.disabled}" ariaLabel="{!v.label}"
-                                label="{!v.selectedLabel}"/>
+                                ariaRequired="{!v.required}" label="{!v.selectedLabel}"/>
             <ui:menuList aura:id="options" class="select-options" attachToBody="true" aura:flavor="default,left,short"
                 triggerTypeAhead="true"
                 menuExpand="{!c.menuOpened}"

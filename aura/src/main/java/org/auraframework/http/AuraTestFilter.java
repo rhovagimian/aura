@@ -21,9 +21,11 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -45,7 +47,6 @@ import org.apache.http.HttpStatus;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.http.message.BasicNameValuePair;
-import org.auraframework.Aura;
 import org.auraframework.adapter.ConfigAdapter;
 import org.auraframework.adapter.ExceptionAdapter;
 import org.auraframework.adapter.ServletUtilAdapter;
@@ -127,7 +128,7 @@ public class AuraTestFilter implements Filter {
     private ConfigAdapter configAdapter;
     private ExceptionAdapter exceptionAdapter;
     private ServletUtilAdapter servletUtilAdapter;
-
+    
     @Inject
     public void setTestContextAdapter(TestContextAdapter testContextAdapter) {
         this.testContextAdapter = testContextAdapter;
@@ -158,19 +159,35 @@ public class AuraTestFilter implements Filter {
         this.servletUtilAdapter = servletUtilAdapter;
     }
 
+    public AuraTestFilter() {
+        LOG.info("AuraTestFilter.ctor()", new Error("AuraTestFilter.ctor()"));
+    }
+    
     @Override
-    public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain) throws ServletException,
+    public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws ServletException,
             IOException {
-        if (Aura.getConfigAdapter().isProduction()) {
-            chain.doFilter(req, res);
+        if (testContextAdapter == null || configAdapter.isProduction()) {
+            chain.doFilter(request, response);
             return;
         }
 
-        if (testContextAdapter == null) {
-            chain.doFilter(req, res);
-            return;
-        }
+		final AtomicBoolean handled = new AtomicBoolean(false);
+		
+		for (HttpFilter filter : testCaseFilters) {
+			filter.doFilter((HttpServletRequest) request, (HttpServletResponse) response, (req, res) -> {
+				innerFilter(req, res, chain);
+				handled.set(true);
+			});
+			if (handled.get()) {
+				return; // Only 1 filter is allowed to generate a response
+			}
+		}
 
+		innerFilter(request, response, chain);
+    }
+    
+    private void innerFilter(ServletRequest req, ServletResponse res, FilterChain chain)
+            throws IOException, ServletException {
         HttpServletRequest request = (HttpServletRequest)req;
         HttpServletResponse response = (HttpServletResponse)res;
         TestContext testContext = getTestContext(request);
@@ -215,7 +232,7 @@ public class AuraTestFilter implements Filter {
                         loadTestMocks(context, true, testContext.getLocalDefs());
 
                         // Capture the response and inject tags to load jstest.
-                        String capturedResponse = captureResponse(req, response, targetUri);
+                        String capturedResponse = captureResponse(request, response, targetUri);
                         if (capturedResponse != null) {
                             servletUtilAdapter.setNoCache(response);
                             response.setContentType(servletUtilAdapter.getContentType(Format.HTML));
@@ -240,6 +257,8 @@ public class AuraTestFilter implements Filter {
                     default:
                         // Pass it on.
                     }
+                } else if (testToRun != null && testToRun.isEmpty()) {
+                    LOG.error("Got an empty test name in request: " + request.getRequestURL() + "?" + request.getQueryString(), new Error("aura.jstestrun empty"));
                 }
 
                 // aurajstest:jstest app is invokable in the following ways:
@@ -270,7 +289,7 @@ public class AuraTestFilter implements Filter {
                             Format.HTML, Authentication.AUTHENTICATED.name(), "", qs);
                     RequestDispatcher dispatcher = servletContext.getContext(newUri).getRequestDispatcher(newUri);
                     if (dispatcher != null) {
-                        dispatcher.forward(req, response);
+                        dispatcher.forward(request, response);
                         return;
                     }
                 }
@@ -284,7 +303,7 @@ public class AuraTestFilter implements Filter {
         } else {
             if (!contextService.isEstablished()) {
                 LOG.error("Aura context is not established! New context will NOT be created.");
-                chain.doFilter(req, response);
+                chain.doFilter(request, response);
                 return;
             }
             AuraContext context = contextService.getCurrentContext();
@@ -292,17 +311,20 @@ public class AuraTestFilter implements Filter {
             // Reset mocks if requested, or for the initial GET.
             loadTestMocks(context, doResetTest, testContext.getLocalDefs());
         }
-        chain.doFilter(req, response);
+        chain.doFilter(request, response);
     }
 
     @Override
     public void init(FilterConfig filterConfig) throws ServletException {
+    	LOG.info("AuraTestFilter.init()", new Error("AuraTestFilter.init()"));
         servletContext = filterConfig.getServletContext();
         processInjection(filterConfig);
     }
     
     public void processInjection(FilterConfig filterConfig) {
-        SpringBeanAutowiringSupport.processInjectionBasedOnServletContext(this, servletContext);
+        if (testContextAdapter == null) {
+            SpringBeanAutowiringSupport.processInjectionBasedOnServletContext(this, servletContext);
+        }
     }
 
     @Override
@@ -371,6 +393,7 @@ public class AuraTestFilter implements Filter {
         if (testName == null) {
             // This must be set in a forwarded request because the query string is merged and a non-empty value would
             // cause a loop
+        	LOG.info("AuraTestFilter.createURI()", new Error("testName was null"));
             testName = "";
         }
         
@@ -497,7 +520,7 @@ public class AuraTestFilter implements Filter {
             tag = String.format("<script src='%s'></script>", testUrl);
         }
 
-        switch (Aura.getContextService().getCurrentContext().getClient().getType()) {
+        switch (contextService.getCurrentContext().getClient().getType()) {
         case IE9:
         case IE8:
         case IE7:
@@ -513,7 +536,7 @@ public class AuraTestFilter implements Filter {
         String qs = String.format("aura.testTimeout=%s&aura.nonce=%s", timeout, System.nanoTime());
         String suiteSrcUrl = createURI(targetDescriptor.getNamespace(), targetDescriptor.getName(),
                 targetDescriptor.getDefType(), null, Format.JS, Authentication.AUTHENTICATED.name(), testName, qs);
-        tag = tag + String.format("<script src='%s'%s></script>\n", suiteSrcUrl, defer);
+        tag = tag + String.format("<script src='%s'%s></script>\n", suiteSrcUrl, "");
         return tag;
     }
 
@@ -549,23 +572,40 @@ public class AuraTestFilter implements Filter {
             return;
         }
         
-
-        // TODO: Inject test framework here, before the test suite code, separately from framework code.
-        out.append(String.format(
-        "(function testBootstrap(suiteProps) { "
-        		+ "if (!window.Aura || !window.Aura.frameworkJsReady) {"
-        			+ "window.Aura || (window.Aura = {});\n\t\t"
-        			+ "window.Aura.beforeFrameworkInit = Aura.beforeFrameworkInit || [];\n\t\t "
-        			+ "window.Aura.beforeFrameworkInit.push(testBootstrap.bind(null, suiteProps));\n\t\t "
-        			+ "} else {\n\t\t "
-        				+ "window.$A.test.$testBootstrap$ = window.$A.test.$testBootstrap$?window.$A.test.$testBootstrap$:{}; \n\t\t "
-            			+ "window.$A.test.$testBootstrap$['testBootstrapFunction']=' Framework ready, call $A.test.run for test:"+testName+" #'+ window.Aura.time(); \n\t\t "
-            			+ "$A.test.run('%s', suiteProps, '%s');\n\t"
-        				+ "}\n"
-        		+ "}(", 
-        testName,testTimeout));
-        out.append(suiteDef.getCode());
-        out.append("\n));"); // handle trailing single-line comments with newline
+        out.append(
+        		String.format(
+        			"var testBootstrapFunction = function(testName, suiteProps, testTimeout) { \n"+
+        					"if(!$A.test.isComplete()) {\n"+
+        						"if(window.sessionStorage) {\n"+
+        							"var oldStatus = sessionStorage.getItem('TestRunStatus'); \n"+
+        							"sessionStorage.setItem('TestRunStatus',(oldStatus?oldStatus:'')+'Run '+testName+', timeStamp#'+$A.test.time()+'.'); \n"+
+        						"}\n"+
+        						"$A.test.run(testName, suiteProps, testTimeout); \n"+
+        					"} else {\n"+
+        						"if(window.sessionStorage) {\n"+
+        							"var oldStatus = sessionStorage.getItem('TestRunStatus'); \n"+
+        							"sessionStorage.setItem('TestRunStatus',(oldStatus?oldStatus:'')+'Skip '+testName+', Test Already Complete, timeStamp#'+$A.test.time()+'.'); \n"+
+        						"}\n"+
+        					"}\n"+
+        			"}; \n"+
+        			"if(window && window.Aura && window.Aura.appBootstrapStatus === 'loaded' " +//bootstrap is finished
+        		         "&& window.$A && window.$A.test && window.$A.test.isComplete instanceof Function ) { \n"+//but the test wasn't
+        		         "if(window.sessionStorage) {\n"+
+								//"var oldStatus = sessionStorage.getItem('TestRunStatus'); \n"+
+								"sessionStorage.setItem('TestRunStatus','Run %s directly, as bootstrap finish before we can push test to its run-after, timeStamp#'+$A.test.time()+'.'); \n"+
+						 "}\n"+
+						 "testBootstrapFunction('%s', %s, '%s'); \n"+
+        			"} else {\n"+
+	        			"if(window.sessionStorage) {\n"+
+							//"var oldStatus = sessionStorage.getItem('TestRunStatus'); \n"+
+							"sessionStorage.setItem('TestRunStatus','Push %s to bootstrap run after, timeStamp#'+$A.test.time()+'.'); \n"+
+						"}\n"+
+						"window.Aura || (window.Aura = {}); \n"+
+	        			"window.Aura.afterBootstrapReady || (window.Aura.afterBootstrapReady = []); \n"+
+	        			"window.Aura.afterBootstrapReady.push(testBootstrapFunction.bind(this, '%s', %s, '%s')); \n"+
+        			"} \n"
+        			,testName, testName, suiteDef.getCode()+"\t\n", testTimeout, testName, testName, suiteDef.getCode()+"\t\n", testTimeout)
+        );
     }
 
     private DefDescriptor<?> getTargetDescriptor(HttpServletRequest request) {
@@ -607,4 +647,22 @@ public class AuraTestFilter implements Filter {
         }
         return null;
     }
+
+    private List<HttpFilter> testCaseFilters = Collections.synchronizedList(Lists.newArrayList());
+    
+	public void addFilter(HttpFilter filter) {
+		synchronized (testCaseFilters) {
+			if (filter != null) {
+				testCaseFilters.add(0, filter);
+			}
+		}
+    }
+    
+	public synchronized void removeFilter(HttpFilter filter) {
+		synchronized (testCaseFilters) {
+			if (filter != null) {
+				testCaseFilters.remove(filter);
+			}
+		}
+	}
 }

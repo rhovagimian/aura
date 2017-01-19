@@ -27,7 +27,7 @@ Aura.time = window.performance && window.performance.now ? window.performance.no
 Aura["bootstrap"] = Aura["bootstrap"] || {};
 Aura.bootstrapMark = function (mark, value) {
     //#if {"excludeModes" : ["PRODUCTION"]}
-    if (window.console.timeStamp) {
+    if (window.console&&window.console.timeStamp) {
         window.console.timeStamp(mark);
     }
     //#end
@@ -39,6 +39,8 @@ Aura.bootstrapMark = function (mark, value) {
 // - all files required for bootstrap are loaded with sync <script> tags
 // - DOMContentLoaded is fired after DOM is ready, which includes executing all sync <script> tags
 // - to detect errors we wait for DOMContentLoaded then check for all bootstrap file markers
+// NOTE: if Aura is injected into the page (Lightning Out or AIS) then DOMContentLoaded is fired
+// before aura.js is loaded/executed, so verifyBootstrap() is never invoked.
 (function bootstrapRobustness() {
     function verifyBootstrap() {
         document.removeEventListener('DOMContentLoaded', verifyBootstrap);
@@ -46,8 +48,10 @@ Aura.bootstrapMark = function (mark, value) {
         // now that all <script> are loaded can update network bootstrap.js load status
         $A.clientService.setAppBootstrapStatus();
 
-        // wait for bootstrap to load from storage
-        if ($A.clientService.gvpsFromStorage && !Aura["appBootstrapCacheStatus"]) {
+        // wait for bootstrap to load from storage:
+        // 1. wait for $A.initAsync()'s AuraContext callback to be invoked: gvsFromStorage gets assigned true/false
+        // 2. if gvpsFromStorage is true then wait for bootstrap from storage (if false then bootstrap is not loaded from storage)
+        if ($A.clientService.gvpsFromStorage === undefined || ($A.clientService.gvpsFromStorage && Aura["appBootstrapCacheStatus"] === undefined)) {
             setTimeout(verifyBootstrap, 1000);
             return;
         }
@@ -124,8 +128,8 @@ window['$A'] = {};
 // #include aura.util.Override
 
 // -- Errors ------------------------------------------------------------
-// #include aura.AuraError
-// #include aura.AuraFriendlyError
+// #include aura.error.AuraError
+// #include aura.error.AuraFriendlyError
 
 // -- System ------------------------------------------------------------
 // #include aura.system.DefDescriptor
@@ -235,9 +239,6 @@ window['$A'] = {};
  * @borrows Aura.Services.AuraComponentService#createComponent as createComponent
  * @borrows Aura.Services.AuraComponentService#createComponents as createComponents
  * @borrows Aura.Services.AuraComponentService#getComponent as getComponent
- * @borrows Aura.Services.AuraComponentService#newComponentDeprecated as newCmp
- * @borrows Aura.Services.AuraComponentService#newComponentDeprecated as newCmpDeprecated
- * @borrows Aura.Services.AuraComponentService#newComponentAsync as newCmpAsync
  * @borrows Aura.Services.AuraEventService.newEvent as getEvt
  */
 function AuraInstance () {
@@ -438,7 +439,6 @@ function AuraInstance () {
     this.Component                 = Component;
 
     this.enqueueAction             = this.clientService.enqueueAction.bind(this.clientService);
-    this.deferAction               = this.clientService.deferAction.bind(this.clientService);
     this.deferPendingActions       = this.clientService.deferPendingActions.bind(this.clientService);
     this.runAfterInit              = this.clientService.runAfterInitDefs.bind(this.clientService);
 
@@ -451,12 +451,16 @@ function AuraInstance () {
     this.getComponent              = this.componentService.getComponent.bind(this.componentService);
     this.createComponent           = this.componentService["createComponent"].bind(this.componentService);
     this.createComponents          = this.componentService["createComponents"].bind(this.componentService);
-    this.newCmp                    = this.componentService["newComponentDeprecated"].bind(this.componentService);
-    this.newCmpDeprecated          = this.componentService["newComponentDeprecated"].bind(this.componentService);
-    this.newCmpAsync               = this.componentService["newComponentAsync"].bind(this.componentService);
 
     this.createComponentFromConfig = this.componentService.createComponentFromConfig.bind(this.componentService);
     this.getEvt                    = this.eventService.newEvent.bind(this.eventService);
+
+    // DEPRECATED
+    this.deferAction               = this.clientService.deferAction.bind(this.clientService);
+    this.newCmp                    = this.componentService["newComponentDeprecated"].bind(this.componentService);
+    this.newCmpDeprecated          = this.componentService["newComponentDeprecated"].bind(this.componentService);
+    this.newCmpAsync               = this.componentService["newComponentAsync"].bind(this.componentService);
+    // END DEPRECATED
 
     /**
      * Pushes current portion of attribute's creationPath onto stack
@@ -529,7 +533,6 @@ function AuraInstance () {
     this["styleService"] = this.styleService;
     this["services"] = this.services;
     this["enqueueAction"] = this.enqueueAction;
-    this["deferAction"] = this.deferAction;
     this["deferPendingActions"] = this.deferPendingActions;
     this["render"] = this.render;
     this["rerender"] = this.rerender;
@@ -545,15 +548,11 @@ function AuraInstance () {
     //#if {"excludeModes" : ["PRODUCTION", "PRODUCTIONDEBUG"]}
     this["devToolService"] = this.devToolService;
     this["getQueryStatement"] = this.devToolService.newStatement;
-    this["qhelp"] = function() { return this.devToolService.help();};
     //#end
 
     this["createComponent"] = this.createComponent;
     this["createComponents"] = this.createComponents;
     this["createComponentFromConfig"] = this.createComponentFromConfig;
-    this["newCmp"] = this.newCmp;
-    this["newCmpDeprecated"] = this.newCmpDeprecated;
-    this["newCmpAsync"] = this.newCmpAsync;
     this["getEvt"] = this.getEvt;
     this["Component"] = this.Component;
 
@@ -569,6 +568,17 @@ function AuraInstance () {
     this["hasDefinition"] = this.hasDefinition;
     this["getDefinition"] = this.getDefinition;
     this["getDefinitions"] = this.getDefinitions;
+
+    // DEPRECATED
+    this["deferAction"] = this.deferAction;
+    this["newCmp"] = this.newCmp;
+    this["newCmpDeprecated"] = this.newCmpDeprecated;
+    this["newCmpAsync"] = this.newCmpAsync;
+    //#if {"excludeModes" : ["PRODUCTION", "PRODUCTIONDEBUG"]}
+    this["qhelp"] = function() { return this.devToolService.help();};
+    //#end
+
+    // END DEPRECATED
 
     var services = this.services;
 
@@ -702,11 +712,19 @@ AuraInstance.prototype.initAsync = function(config) {
         $A.clientService.initHost(config["host"]);
         $A.clientService.setToken(config["token"]);
         $A.metricsService.initialize();
-
+        
         function reportError (e) {
             $A.reportError("Error initializing the application", e);
         }
 
+        function loadStoredToken () {
+            return $A.clientService.loadTokenFromStorage().then(function setStoredToken(token){
+                $A.clientService.setToken(token);
+            }, function tokenNotFound(reason){
+                $A.log("Aura.initAsync(): token not loaded from storage: " + reason);
+            });
+        }
+        
         function initializeApp () {
             return $A.clientService.initializeApplication().then(function (bootConfig) {
                 $A.run(function () {
@@ -721,13 +739,16 @@ AuraInstance.prototype.initAsync = function(config) {
         // Start by enabling the actions filter if relevant. populatePersistedActionsFilter() populates it,
         // called only if GVP + defs are loaded.
         $A.clientService.setupPersistedActionsFilter();
-        $A.clientService.gvpsFromStorage = context.globalValueProviders.LOADED_FROM_PERSISTENT_STORAGE; // Do not remove, used for instrumentation
+
+        //  do not modify - used by bootstrapRobustness() and instrumentation
+        $A.clientService.gvpsFromStorage = context.globalValueProviders.LOADED_FROM_PERSISTENT_STORAGE;
 
         if (!$A.clientService.gvpsFromStorage) {
             $A.log("Aura.initAsync: GVP not loaded from storage so not loading defs or actions either");
-            initializeApp().then(undefined, reportError);
+            loadStoredToken().then(initializeApp).then(undefined, reportError);
         } else {
             Promise["all"]([
+                loadStoredToken(),
                 $A.clientService.loadBootstrapFromStorage(),
                 $A.componentService.restoreDefsFromStorage(context),
                 $A.clientService.populatePersistedActionsFilter()
@@ -1084,8 +1105,31 @@ AuraInstance.prototype.getCallback = function(callback) {
                 $A.lastKnownError = e;
                 throw e;
             } else {
+                // create a synthetic stack frame for errors from callback wrapped in $A.getCallback called by Action.finishAction
+                // because Safari 10/iOS Webview doesn't provide function name in stack.
+                var syntheticStackFrame = "";
+                if (arguments.length === 2) {
+                    var action = arguments[0];
+                    if (action) {
+                        var actionDef = action.getDef();
+                        if (actionDef) {
+                            syntheticStackFrame = actionDef.getDescriptor().toString();
+                        }
+                    }
+                    var actionComponent = arguments[1];
+                    if (actionComponent) {
+                        var actionComponentDef = actionComponent.getDef();
+                        if (actionComponentDef && syntheticStackFrame) {
+                            syntheticStackFrame += "@" + actionComponentDef.getDescriptor().toString() + "\n";
+                        }
+                    }
+                }
+
                 var errorWrapper = new $A.auraError("Error in $A.getCallback()", e);
                 errorWrapper.component = contextComponent;
+                if (syntheticStackFrame) {
+                    errorWrapper.setStackTrace(syntheticStackFrame + errorWrapper.stackTrace);
+                }
                 $A.lastKnownError = errorWrapper;
                 throw errorWrapper;
             }
@@ -1348,6 +1392,77 @@ AuraInstance.prototype.trace = function() {
     if (window["console"] && window["console"]["trace"]) {
         window["console"]["trace"]();
     }
+};
+
+/*
+* Called from methods that have entered or are entering the deprecation pipeline. Provides first warnings, then errors to developers.
+* When possible, includes a workaround for the behavior or method being deprecated.
+*
+* @param {String} message The message to provide the developer indicating the method or behavior which has been or is being deprecated.
+* @param {String} workaround Any known or suggested workaround to accomplish the behavior being deprecated.
+* @param {Date} sinceDate The date since when the calling method has entered the deprecation pipeline. If omitted, deprecation is considered immediate.
+* @param {Date} dueDate The date at which the calling method is considered deprecated, and becomes an error. If omitted, deprecation is considered due upon the elapse of a default time period after 'sinceDate'.
+* @private
+* */
+AuraInstance.prototype.deprecated = function(message,workaround,sinceDate,dueDate){
+    //#if {"excludeModes" : ["PRODUCTION"]}
+    // This should be moved out to a constant, once we decide on the actual value.
+    var DEFAULT_DEPRECATION=1000*60*60*24*28; // Four weeks
+    var TEST_BUFFER=1000*60*60*24*14; // Two weeks
+    var testDueDate;
+    if(!dueDate){
+        if(!sinceDate){
+            dueDate=testDueDate=new Date();
+        }else {
+            sinceDate=new Date(sinceDate);
+            dueDate=new Date(sinceDate);
+            dueDate.setTime(dueDate.getTime() + DEFAULT_DEPRECATION);
+            testDueDate=new Date(dueDate.getTime() - TEST_BUFFER);
+        }
+    }else{
+        dueDate=new Date(dueDate);
+        testDueDate=new Date(dueDate);
+        testDueDate.setTime(testDueDate.getTime() - TEST_BUFFER);
+        if(!sinceDate) {
+            sinceDate = new Date(dueDate);
+            sinceDate.setTime(sinceDate.getTime() - DEFAULT_DEPRECATION);
+        }else{
+            sinceDate=new Date(sinceDate);
+        }
+    }
+    var caller=new Error();
+    if(!caller.stack){
+        try{
+            throw caller;
+        }catch(e){
+            caller=e;
+        }
+    }
+    caller=(caller.stack||'').split('\n')[3]||'at unknown location';
+    if(caller.indexOf("/aura_")>-1){
+        // JBUCH: TEMPORARILY IGNORE CALLS BY FRAMEWORK.
+        // REMOVE WHEN ALL @public METHODS HAVE BEEN ADDRESSED.
+        return;
+    }
+    message=$A.util.format("DEPRECATED (as of {0}, unusable on {1}): {2}\n\t{3}\n{4}",
+        $A.localizationService.formatDate(sinceDate),
+        $A.localizationService.formatDate(dueDate),
+        message,
+        $A.util.trim(caller),
+        workaround?"Workaround: "+workaround:"No known workaround."
+    );
+    if(Date.now()>=dueDate){
+        throw new Error(message);
+    }else{
+        $A.warning(message);
+    }
+    //#end
+    //#if {modes:["TESTING", "TESTINGDEBUG", "AUTOTESTING", "AUTOTESTINGDEBUG"]}
+    // BREAK EARLY IN TESTS
+    if(Date.now()>=testDueDate){
+        throw new Error(message);
+    }
+    //#end
 };
 
 /**

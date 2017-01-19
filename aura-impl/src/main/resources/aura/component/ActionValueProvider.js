@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 function ActionValueProvider(component, controllerDef) {
-	this.actions;
-	this.component = component;
-	this.controllerDef = controllerDef;
+    this.actions;
+    this.component = component;
+    this.controllerDef = controllerDef;
 }
 
 ActionValueProvider.prototype.get = function(key) {
-	// Delay creation of the object for memory purposes.
-	if(!this.actions) {
-		this.actions = {};
-	}
-	var actionDef = this.actions[key];
+    // Delay creation of the object for memory purposes.
+    if(!this.actions) {
+        this.actions = {};
+    }
+    var actionDef = this.actions[key];
     if (!actionDef) {
         actionDef = this.component['controller'] && this.component['controller'][key];
         if (actionDef) {
@@ -34,10 +34,18 @@ ActionValueProvider.prototype.get = function(key) {
                 "actionType": "CLIENT",
                 "code": actionDef
             });
+
+            try {
+                this.controllerDef.getActionDef(key);
+                var message = "Component '" + this.component.getName() + "' has server and client action name conflicts: " + key;
+                $A.warning(message);
+            } catch(e) {
+                // this means there's no such action on the server side
+            }
         } else {
             actionDef = this.controllerDef && this.controllerDef.getActionDef(key);
         }
-        
+
         $A.assert(actionDef, "Unknown controller action '"+key+"'");
 
         this.actions[key] = actionDef;

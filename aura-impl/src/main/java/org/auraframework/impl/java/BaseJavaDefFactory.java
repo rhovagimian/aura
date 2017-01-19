@@ -43,7 +43,7 @@ public abstract class BaseJavaDefFactory<D extends Definition> extends DefFactor
     }
 
     /**
-     * Find an annotation up to two levels deep.
+     * Fnd an annotation up to two levels deep.
      *
      * This helper function allows us to search 'meta' annotations, at a certain cost during compilation...
      * We do this to allow a single level of nesting for annotations. This maybe should be replaced by the
@@ -127,7 +127,7 @@ public abstract class BaseJavaDefFactory<D extends Definition> extends DefFactor
     }
 
     @Override
-    public long getLastMod(DefDescriptor<D> descriptor) {
+    public long getLastMod(DefDescriptor<?> descriptor) {
         return 0;
     }
 }

@@ -635,7 +635,10 @@ var AuraDevToolService = function() {
                          if($A.util.isUndefinedOrNull(dict[inputID])){
                              dict[inputID] = label;
                          }
-                         else {
+                         // if this inputID has already been encountered and
+                         // if it is not the same label to input mapping, then mark as an error tag
+                         else if($A.util.getElementAttributeValue(dict[inputID], "data-aura-rendered-by") !== 
+                        	 	 $A.util.getElementAttributeValue(label, "data-aura-rendered-by")){
                              errorArray.push(dict[inputID]);
                              errorArray.push(label);
                          }
@@ -768,8 +771,12 @@ var AuraDevToolService = function() {
                          cmp = $A.getCmp(data_aura_rendered_by);
                          if(!$A.util.isUndefinedOrNull(cmp)){
                         	 cmp = cmp.getAttributeValueProvider();
-                             cmpName = cmp.getName();
-
+                             //Cannot query cmp.getName() in case of PassthroughValue.
+                             if(typeof cmp.getName !== "function"){
+                                 cmp = cmp.getDef().getDescriptor().getFullName();
+                             }else{
+                                 cmpName = cmp.getName();
+                             }
                              //Making sure that we have unique components
                              if(!(cmpName in cmpInfo)){
                                  cmpInfo[cmpName] = "";
@@ -1123,7 +1130,7 @@ var AuraDevToolService = function() {
             checkInputsHaveLabel : {
                 "tag"  : "A11Y_DOM_02",
                 "func" : function(domElem) {
-                     var inputLabelMsg   = "[A11Y_DOM_02] There must be a one-to-one relationship between labels and inputs. There can be no unlabeled <input> elements. There can be no orphaned <label> elements.\n  More info http://sfdc.co/a11y_dom_02";
+                     var inputLabelMsg   = "[A11Y_DOM_02] An input was found without an associated label. All inputs must be identified by a label.\n  More info http://sfdc.co/a11y_dom_02";
                      var accessAideFuncs = aura.devToolService.accessbilityAide;
                      var inputTextTags   = domElem.getElementsByTagName('input');
                      var textAreaTags    = domElem.getElementsByTagName('textarea');
@@ -1134,9 +1141,6 @@ var AuraDevToolService = function() {
                      errorArray = errorArray.concat(accessAideFuncs.inputLabelAide(lbls, inputTextTags));
                      errorArray = errorArray.concat(accessAideFuncs.inputLabelAide(lbls, textAreaTags));
                      errorArray = errorArray.concat(accessAideFuncs.inputLabelAide(lbls, selectTags));
-                     // Disabling in 202 - re-enable this test in 204
-                     // errorArray = errorArray.concat(accessAideFuncs.matchLabelToInput(lbls));
-
                      return accessAideFuncs.formatOutput(inputLabelMsg, errorArray);
                  }
             },
@@ -1365,7 +1369,22 @@ var AuraDevToolService = function() {
             		var errorArray = accessAideFuncs.buttonDuplicateTextAide(buttonTags);
             		return accessAideFuncs.formatOutput(dupeButtonTextErrorMsg, errorArray);
             	}
-            }
+            },
+
+	        /**
+	         * Check that the labels present in the DOM are associated to exactly one input
+	         * @returns String - Returns a string representation of the errors
+	         */
+	        checkOrphanLabels : {
+	        	"tag"  : "A11Y_DOM_15",
+	        	"func" : function(domElem) {
+	        		var orphanLabelErrorMsg = "[A11Y_DOM_15] A label was found without an associated input. Labels should only be used to identify inputs.\n More Info: http://sfdc.co/a11y_dom_15";
+	        		var accessAideFuncs = aura.devToolService.accessbilityAide;
+	        		var labels = domElem.getElementsByTagName("LABEL");
+	        		var errorArray = accessAideFuncs.matchLabelToInput(labels);
+	        		return accessAideFuncs.formatOutput(orphanLabelErrorMsg, errorArray);
+	        	}
+	        }
         },
 
         /**
@@ -1388,7 +1407,7 @@ var AuraDevToolService = function() {
             	checksToRun = ["A11Y_DOM_01", "A11Y_DOM_02", "A11Y_DOM_03", "A11Y_DOM_04",
             	               "A11Y_DOM_06", "A11Y_DOM_07", "A11Y_DOM_08", "A11Y_DOM_09",
             	               "A11Y_DOM_10", "A11Y_DOM_11", "A11Y_DOM_12", "A11Y_DOM_13",
-            	               "A11Y_DOM_14"];
+            	               "A11Y_DOM_14", "A11Y_DOM_15"];
             }
             //Run all tests that are applicable
             for(var funcLabel in functions){
@@ -1402,6 +1421,7 @@ var AuraDevToolService = function() {
             return result;
         },
         help : function(){
+            $A.deprecated("$A.qhelp and $A.devToolService.help are not supported.",null,"2017/01/06");
             var ret = [];
             ret.push("\n COQL Usage");
             var txt = this.helpText;

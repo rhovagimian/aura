@@ -36,6 +36,31 @@ function SecureObject(thing, key) {
 	return Object.seal(o);
 }
 
+var _useProxy;
+
+SecureObject.useProxy = function() {
+    if (_useProxy === undefined) {
+        _useProxy = false;
+        if ("Proxy" in window) {
+            // Attempt to create a proxy just to test if its really a Proxy and not some polyfill etc
+            try {
+                var handler = {
+                    "get": function(target, prop) {
+                        return prop === "foo" ? "proxied" : undefined;
+                    }
+                };
+                
+                var proxy = new Proxy({}, handler);
+                _useProxy = proxy["foo"] === "proxied";
+            } catch (e) {
+                // Do nothing
+            }
+        }
+    }
+        
+    return _useProxy;
+};
+
 SecureObject.getRaw = function(so, prototype) {
 	if (Object.getPrototypeOf(so) !== prototype) {
 		throw new Error("Blocked attempt to invoke secure method with altered prototype!");
@@ -157,27 +182,62 @@ SecureObject.filterEverything = function(st, raw, options) {
 				swallowed = SecureObject(raw, key);
 				mutated = true;
 			} else {
-				swallowed = {};
+			    // DCHASMAN Temporarily suppress the use of universal proxy until issue with TypeError: Illegal invocation with intrinsics can be corrected
+				swallowed = SecureObject.createUniversalProxy(raw, key, true);
 				mutated = true;
-				ls_setRef(swallowed, raw, key);
-
-				for (var name in raw) {
-					if (typeof raw[name] === "function") {
-						Object.defineProperty(swallowed, name, SecureObject.createFilteredMethod(swallowed, raw, name, {
-							filterOpaque : true
-						}));
-					} else {
-						Object.defineProperty(swallowed, name, SecureObject.createFilteredProperty(swallowed, raw, name, {
-							filterOpaque : true
-						}));
-					}
-				}
-				ls_addToCache(raw, swallowed, key);
 			}
 		}
 	}
 
 	return mutated ? swallowed : raw;
+};
+
+var univeralProxyHandler = {
+    "get": function(target, property, receiver) {
+        var value = target[property];
+        return value ? SecureObject.filterEverything(receiver, value) : value;
+    },
+    
+    "set": function(target, property, value, receiver) {
+        target[property] = SecureObject.unfilterEverything(receiver, value);
+        
+        return true;
+    }
+    
+    // DCHASMAN TODO apply and construct traps
+    /*apply: function(target, thisArg, argumentsList) {
+    },
+    
+    construct: function(target, argumentsList, newTarget) {
+    }*/
+};
+
+SecureObject.createUniversalProxy = function(raw, key, doNotUseProxy) {
+    var swallowed;
+    if (SecureObject.useProxy() && doNotUseProxy !== true) {
+        swallowed = new Proxy(raw, univeralProxyHandler);
+        ls_setKey(swallowed, key);
+    } else {
+        // Fallback for environments that do not support Proxy
+        swallowed = {};
+        ls_setRef(swallowed, raw, key);
+    
+        for (var name in raw) {
+            if (typeof raw[name] === "function") {
+                Object.defineProperty(swallowed, name, SecureObject.createFilteredMethod(swallowed, raw, name, {
+                    filterOpaque : true
+                }));
+            } else {
+                Object.defineProperty(swallowed, name, SecureObject.createFilteredProperty(swallowed, raw, name, {
+                    filterOpaque : true
+                }));
+            }
+        }
+    }
+    
+    ls_addToCache(raw, swallowed, key);
+    
+    return swallowed;
 };
 
 SecureObject.unfilterEverything = function(st, value, visited) {
@@ -477,7 +537,7 @@ function getSupportedInterfaces(o) {
 		}
 		interfaces.push("Document", "Node", "EventTarget");
 	} else if (o instanceof DocumentFragment) {
-		interfaces.push("Node", "EventTarget");
+		interfaces.push("Node", "EventTarget", "DocumentFragment");
 	} else if (o instanceof Element) {
 		if (o instanceof HTMLElement) {
 			// Look for all HTMLElement subtypes
@@ -639,7 +699,9 @@ SecureObject.addPrototypeMethodsAndProperties = function(metadata, so, raw, key)
 
 		            set: function(callback) {
 		            	raw[name] = function(e) {
-		                    callback.call(so, SecureDOMEvent(e, key));
+		            	    if (callback) {
+		            	        callback.call(so, SecureDOMEvent(e, key));
+		            	    }
 		                };
 		            }
 		        });
@@ -713,9 +775,16 @@ SecureObject.addPrototypeMethodsAndPropertiesStateless = function(metadata, prot
 		        	},
 
 		            set: function(callback) {
-		            	var so = this;
-		            	SecureObject.getRaw(so, prototypeForValidation)[name] = function(e) {
-		                    callback.call(so, SecureDOMEvent(e, ls_getKey(so)));
+		            	var raw = SecureObject.getRaw(this, prototypeForValidation);
+
+                        // Insure that we pick up the current proxy for the raw object
+		            	var key = ls_getKey(raw);
+		            	var o = ls_getFromCache(raw, key);
+
+                        raw[name] = function(e) {
+		            	    if (callback) {
+		            	        callback.call(o, SecureDOMEvent(e, key));
+		            	    }
 		                };
 		            }
 		        };
@@ -741,9 +810,22 @@ SecureObject.addPrototypeMethodsAndPropertiesStateless = function(metadata, prot
 	return config;
 };
 
+var workerFrame = window.document.getElementById("safeEvalWorker");
+var safeEvalScope = workerFrame && workerFrame.contentWindow;
+
+var unfilteredTypes = [File, FileList, CSSStyleDeclaration, TimeRanges, Date, Promise, MessagePort, MessageChannel, MessageEvent, FormData];
+if (typeof ValidityState !== "undefined") {
+    unfilteredTypes.push(ValidityState);
+}
+
 SecureObject.isUnfilteredType = function(raw) {
-	return (raw instanceof File || raw instanceof FileList || raw instanceof CSSStyleDeclaration || raw instanceof TimeRanges ||
-			raw instanceof Date || (typeof ValidityState !== "undefined" && raw instanceof ValidityState) || raw instanceof Promise);
+    for (var n = 0; n < unfilteredTypes.length; n++) {
+        if ($A.lockerService.instanceOf(raw, unfilteredTypes[n])) {
+            return true;
+        }
+    }
+    
+    return false;
 };
 
 

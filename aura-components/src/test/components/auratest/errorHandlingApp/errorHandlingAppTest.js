@@ -191,6 +191,64 @@
         ]
     },
 
+    testStackTraceForErrorFromServerActionCallbackWrappedInGetCallback: {
+        test: [
+            function(cmp) {
+                $A.test.expectAuraError("Error in $A.getCallback() [Error from server action callback wrapped in $A.getCallback]");
+                $A.test.clickOrTouch(cmp.find("errorFromServerActionCallbackWrappedInGetCallbackButton").getElement());
+                this.waitForErrorModal();
+            },
+            function(cmp) {
+                var actual = this.findStacktraceFromErrorModal();
+                var expected = "java://org.auraframework.components.test.java.controller.TestController/ACTION$doSomething@markup://auratest:errorHandlingApp";
+
+                $A.test.assertTrue(actual.indexOf(expected) > -1);
+            }
+        ]
+    },
+
+    testFailingDescriptorForNonExistingEventHandlerError: {
+        test: [
+            function(cmp) {
+                $A.test.expectAuraError("Unable to find 'nonExistingHandler'");
+                $A.test.clickOrTouch(cmp.find("fireTestEventButton").getElement());
+                this.waitForErrorModal();
+            },
+            function(cmp) {
+                var actual = this.findFailingDescriptorFromErrorModal();
+                var expected = cmp.getDef().getDescriptor().getQualifiedName();
+
+                $A.test.assertEquals(expected, actual);
+            }
+        ]
+    },
+
+    testFiringServerActionErrorEvent: {
+        test: [
+            function(cmp) {
+                // arrange
+                var expected = "foo";
+                var actual;
+
+                $A.eventService.addHandler({
+                    "event": "aura:serverActionError",
+                    "globalId": cmp.getGlobalId(),
+                    "handler": function(event) {
+                        actual = event.getParam("auraError").message;
+                    }
+                });
+
+                // act
+                var event = $A.eventService.newEvent("aura:serverActionError");
+                event.setParam("auraError", new Error(expected));
+                event.fire();
+
+                // assert
+                $A.test.assertEquals(expected, actual);
+            }
+        ]
+    },
+
     waitForErrorModal: function(callback) {
         $A.test.addWaitForWithFailureMessage(true,
             function(){
