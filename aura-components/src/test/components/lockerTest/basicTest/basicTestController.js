@@ -86,16 +86,20 @@
     },
 
 	testEvalBlocking : function(cmp, event, helper) {
-		var testUtils = cmp.get("v.testUtils");		
+		var testUtils = cmp.get("v.testUtils");
+		var inIframe = event.getParam("arguments").inIframe;
 
 		// eval attempts that return a SecureWindow object
 		helper.doTestEvalForSecureWindow(cmp, function() { return window }, testUtils);
 		helper.doTestEvalForSecureWindow(cmp, function() { return self }, testUtils);
 
-	    // eval attempts that return undefined
-		helper.doTestEvalForUndefined(cmp, function() { return top }, testUtils);
-		helper.doTestEvalForUndefined(cmp, function() { return parent }, testUtils);
-
+	    if(inIframe){
+	        helper.doTestEvalForSecureIFrameContentWindow(cmp, function() { return top }, testUtils);
+		    helper.doTestEvalForSecureIFrameContentWindow(cmp, function() { return parent }, testUtils);
+	    }else{
+	        helper.doTestEvalForSecureWindow(cmp, function() { return top }, testUtils);
+		    helper.doTestEvalForSecureWindow(cmp, function() { return parent }, testUtils);
+	    }
 		// DCHASMAN TODO Here is where things go south: basically it looks like aura.mode=JSTESTDEBUG results in an aura doc iframed and missing the CSP header entirely
 		// so that needs to be addressed (results in failures of things that should be blocked by unsafe-inoine etc)
 
@@ -186,42 +190,12 @@
     },
     
     testSecureElementPrototypeCounterMeasures: function(cmp) {
-    	function testSpoof(f, expectedMessage) {
-	        try {
-	        	f();
-	        	testUtils.fail("Call to fake instance of SecureElement should have been blocked");
-	    	} catch (e) {
-	    		testUtils.assertTrue(testUtils.contains(e.toString(), expectedMessage));
-	    	}
-    	}
-
         var testUtils = cmp.get("v.testUtils");
 
+        // Try to access the internal prototype of a SecureElement
         var el = cmp.find("content").getElement();
         var prototype = Object.getPrototypeOf(el);
-        var descriptor = Object.getOwnPropertyDescriptor(prototype, "parentNode");
-        
-        // Try to spoof with correct prototype and newly created object
-        testSpoof(function() {
-        	var fakeEl = Object.create(prototype); 
-        	fakeEl.parentNode;
-    	}, "Blocked attempt to invoke secure method with altered this!");
-        
-        // Try to spoof with borrowed method
-        testSpoof(function() {
-	        descriptor.get.call(Object.create(null));
-        }, "Blocked attempt to invoke secure method with altered prototype!");
-        
-        // Try to spoof with borrowed method and correct prototype
-        testSpoof(function() {
-	        descriptor.get.call(Object.create(prototype));
-        }, "Blocked attempt to invoke secure method with altered this!");
-
-        // Try to spoof with prototype from a different SecureElement tag name and existing object
-        testSpoof(function() {
-	        var otherEl = cmp.find("ul").getElement();
-	        descriptor.get.call(otherEl);
-        }, "Blocked attempt to invoke secure method with altered prototype!");
+        testUtils.assertTrue(prototype === HTMLDivElement.prototype);
     },
 
     // this should only be run on browsers where Locker is not supported
@@ -244,8 +218,9 @@
                 },
                 "DOM element with return from createComponent never updated",
                 function assertReturnIsSecureComponentRef() {
-                    testUtils.assertStartsWith("SecureComponentRef", document.getElementById("content").textContent,
-                            "SecureComponent passed to another namespace should be filted to SecureComponentRef");
+                	var content = document.getElementById("content").textContent;
+                    testUtils.assertStartsWith("SecureComponentRef", content,
+                            "SecureComponent passed to another namespace should be filtered to SecureComponentRef");
                 });
     },
     
@@ -261,6 +236,11 @@
 
         o = {};
         testUtils.assertTrue(o instanceof Object, "Object created via object literal should be an instance of Object");
+        
+        // Pull object through the locker membrane
+        cmp.set("v.object", o);
+        var oFromMembrane = cmp.get("v.object");
+        testUtils.assertTrue(oFromMembrane instanceof Object, "Object created via object literal should be an instance of Object");
         
         // Test Function
         function foo() {
@@ -300,5 +280,36 @@
         testUtils.assertFalse(cmp.get("v.body") instanceof Array, "Array cmp.get('v.body') should not be an instance of Array");
         testUtils.assertFalse(document instanceof Document, "document should not be an instance of Document");
         testUtils.assertFalse(window instanceof Window, "window should not be an instance of Window");
+    },
+    
+    testFilteringProxy: function(cmp, event, helper) {
+        var testUtils = cmp.get("v.testUtils");
+                
+        var o = helper._o;
+        var po = helper._po;
+        var TestPrototype = helper._TestPrototype;
+    	
+        testUtils.assertEquals("fooValue", po.foo());
+        
+        testUtils.assertTrue(o instanceof TestPrototype);
+        testUtils.assertTrue(po instanceof TestPrototype);
+        
+        testUtils.assertTrue("foo" in po);
+        testUtils.assertEquals("fooValue", po.foo());
+
+        testUtils.assertEquals(
+            JSON.stringify(Object.getOwnPropertyDescriptor(o, "someProperty")),
+            JSON.stringify(Object.getOwnPropertyDescriptor(po, "someProperty")));
+
+        // Add a dynamic property and make sure its visible on the proxy
+        po.expando = "expandoValue";
+        testUtils.assertEquals("expandoValue", po.expando);    
+        
+        // Verify that an expando set on one reference is reflected in another reference from a different namespace
+        testUtils.assertEquals(JSON.stringify(Object.keys(o)), JSON.stringify(Object.keys(po)));
+        
+        delete po.expando;
+
+        testUtils.assertEquals(JSON.stringify(Object.keys(o)), JSON.stringify(Object.keys(po)));
     }
 })

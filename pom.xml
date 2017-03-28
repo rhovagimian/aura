@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.auraframework</groupId>
     <artifactId>aura-framework</artifactId>
-    <version>0.5164-SNAPSHOT</version>
+    <version>0.5513-SNAPSHOT</version>
     <packaging>pom</packaging>
     <organization>
         <url>http://www.auraframework.org</url>
@@ -94,6 +94,7 @@
         <module>aura</module>
         <module>aura-impl</module>
         <module>aura-impl-expression</module>
+        <module>aura-modules</module>
         <module>aura-components</module>
         <module>aura-tools</module>
         <module>aura-resources</module>
@@ -118,49 +119,49 @@
             <artifactId>spring-test</artifactId>
             <scope>test</scope>
         </dependency>
-       <!-- powermockito is picky about version of mockito, please be careful when upgrading any of them -->
-  	   <dependency>
-	      <groupId>org.mockito</groupId>
-	      <artifactId>mockito-core</artifactId>
-	      <version>1.10.16</version>
-	      <scope>test</scope>
-	   </dependency>
-	   <dependency>
-	      <groupId>org.powermock</groupId>
-	      <artifactId>powermock-api-mockito</artifactId>
-	      <version>1.6.4</version>
-	      <scope>test</scope>
-	    </dependency>
-	    <dependency>
-	      <groupId>org.powermock</groupId>
-	      <artifactId>powermock-module-junit4</artifactId>
-	      <version>1.6.4</version>
-	      <scope>test</scope>
-	    </dependency>
-	    <dependency>
-	      <groupId>org.powermock</groupId>
-	      <artifactId>powermock-module-junit4-common</artifactId>
-	      <version>1.6.4</version>
-	      <scope>test</scope>
-	    </dependency>
-	    <dependency>
-	      <groupId>org.powermock</groupId>
-	      <artifactId>powermock-api-support</artifactId>
-	      <version>1.6.4</version>
-	      <scope>test</scope>
-	    </dependency>
-	    <dependency>
-	      <groupId>org.powermock</groupId>
-	      <artifactId>powermock-core</artifactId>
-	      <version>1.6.4</version>
-	      <scope>test</scope>
-	    </dependency>
-	    <dependency>
-	      <groupId>org.powermock</groupId>
-	      <artifactId>powermock-reflect</artifactId>
-	      <version>1.6.4</version>
-	      <scope>test</scope>
-	    </dependency>
+        <!-- powermockito is picky about version of mockito, please be careful when upgrading any of them -->
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>1.10.16</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.powermock</groupId>
+            <artifactId>powermock-api-mockito</artifactId>
+            <version>1.6.4</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.powermock</groupId>
+            <artifactId>powermock-module-junit4</artifactId>
+            <version>1.6.4</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.powermock</groupId>
+            <artifactId>powermock-module-junit4-common</artifactId>
+            <version>1.6.4</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.powermock</groupId>
+            <artifactId>powermock-api-support</artifactId>
+            <version>1.6.4</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.powermock</groupId>
+            <artifactId>powermock-core</artifactId>
+            <version>1.6.4</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.powermock</groupId>
+            <artifactId>powermock-reflect</artifactId>
+            <version>1.6.4</version>
+            <scope>test</scope>
+        </dependency>
 
     </dependencies>
     <dependencyManagement>
@@ -168,89 +169,100 @@
             <dependency>
                 <groupId>org.auraframework</groupId>
                 <artifactId>aura</artifactId>
-                <version>0.5164-SNAPSHOT</version>
+                <version>0.5513-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>org.auraframework</groupId>
                 <artifactId>aura</artifactId>
-                <version>0.5164-SNAPSHOT</version>
+                <version>0.5513-SNAPSHOT</version>
                 <type>test-jar</type>
             </dependency>
             <dependency>
                 <groupId>org.auraframework</groupId>
                 <artifactId>aura-interfaces</artifactId>
-                <version>0.5164-SNAPSHOT</version>
+                <version>0.5513-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>org.auraframework</groupId>
                 <artifactId>aura-spring</artifactId>
-                <version>0.5164-SNAPSHOT</version>
+                <version>0.5513-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>org.auraframework</groupId>
                 <artifactId>aura-util</artifactId>
-                <version>0.5164-SNAPSHOT</version>
+                <version>0.5513-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>org.auraframework</groupId>
                 <artifactId>aura-util</artifactId>
-                <version>0.5164-SNAPSHOT</version>
+                <version>0.5513-SNAPSHOT</version>
+                <type>test-jar</type>
+            </dependency>
+            <dependency>
+                <groupId>org.auraframework</groupId>
+                <artifactId>aura-modules</artifactId>
+                <version>0.5513-SNAPSHOT</version>
+            </dependency>
+            <dependency>
+                <groupId>org.auraframework</groupId>
+                <artifactId>aura-modules</artifactId>
+                <version>0.5513-SNAPSHOT</version>
                 <type>test-jar</type>
             </dependency>
             <dependency>
                 <groupId>org.auraframework</groupId>
                 <artifactId>aura-impl</artifactId>
-                <version>0.5164-SNAPSHOT</version>
+                <version>0.5513-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>org.auraframework</groupId>
                 <artifactId>aura-impl</artifactId>
-                <version>0.5164-SNAPSHOT</version>
+                <version>0.5513-SNAPSHOT</version>
                 <type>test-jar</type>
             </dependency>
             <dependency>
                 <groupId>org.auraframework</groupId>
                 <artifactId>aura-impl-expression</artifactId>
-                <version>0.5164-SNAPSHOT</version>
+                <version>0.5513-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>org.auraframework</groupId>
                 <artifactId>aura-impl</artifactId>
-                <version>0.5164-SNAPSHOT</version>
+                <version>0.5513-SNAPSHOT</version>
                 <type>sources</type>
             </dependency>
             <dependency>
                 <groupId>org.auraframework</groupId>
                 <artifactId>aura-impl-expression</artifactId>
-                <version>0.5164-SNAPSHOT</version>
+                <version>0.5513-SNAPSHOT</version>
                 <type>test-jar</type>
             </dependency>
             <dependency>
                 <groupId>org.auraframework</groupId>
                 <artifactId>aura-components</artifactId>
-                <version>0.5164-SNAPSHOT</version>
+                <version>0.5513-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>org.auraframework</groupId>
                 <artifactId>aura-components</artifactId>
-                <version>0.5164-SNAPSHOT</version>
+                <version>0.5513-SNAPSHOT</version>
                 <type>test-jar</type>
             </dependency>
             <dependency>
                 <groupId>org.auraframework</groupId>
                 <artifactId>aura-tools</artifactId>
-                <version>0.5164-SNAPSHOT</version>
+                <version>0.5513-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>org.auraframework</groupId>
                 <artifactId>aura-resources</artifactId>
-                <version>0.5164-SNAPSHOT</version>
+                <version>0.5513-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>org.auraframework</groupId>
                 <artifactId>aura-integration-test</artifactId>
                 <type>test-jar</type>
-                <version>0.5164-SNAPSHOT</version>
+                <version>0.5513-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>junit</groupId>
@@ -265,7 +277,7 @@
             <dependency>
                 <groupId>com.google.guava</groupId>
                 <artifactId>guava</artifactId>
-                <version>14.0.1</version>
+                <version>18.0</version>
             </dependency>
             <dependency>
                 <groupId>javax.servlet</groupId>
@@ -290,7 +302,7 @@
             <dependency>
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-lang3</artifactId>
-                <version>3.1</version>
+                <version>3.4</version>
             </dependency>
             <dependency>
                 <groupId>org.springframework</groupId>
@@ -461,6 +473,16 @@
                 <artifactId>jscover-report-maven-plugin</artifactId>
                 <version>1.0.16</version>
             </dependency>
+            <dependency>
+                <groupId>com.eclipsesource.j2v8</groupId>
+                <artifactId>j2v8_macosx_x86_64</artifactId>
+                <version>4.6.0</version>
+            </dependency>
+            <dependency>
+                <groupId>com.salesforce.uitier.j2v8</groupId>
+                <artifactId>j2v8_linux_x86_64</artifactId>
+                <version>4.6.0-c68</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
     <build>
@@ -559,6 +581,7 @@
                         <exclude>**/.index</exclude>
                         <exclude>**/version.prop</exclude>
                         <exclude>aura-resources/src/main/resources/**</exclude>
+                        <exclude>aura-modules/src/main/resources/**</exclude>
                         <exclude>aura-archetype/src/main/resources/archetype-resources/**</exclude>
                         <exclude>**/target/**</exclude>
                     </excludes>

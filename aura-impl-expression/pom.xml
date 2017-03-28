@@ -4,7 +4,7 @@
     <parent>
         <groupId>org.auraframework</groupId>
         <artifactId>aura-framework</artifactId>
-        <version>0.5164-SNAPSHOT</version>
+        <version>0.5513-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <dependencies>
@@ -113,19 +113,6 @@
                                         <versionRange>[1.0.0,)</versionRange>
                                         <goals>
                                             <goal>add-source</goal>
-                                        </goals>
-                                    </pluginExecutionFilter>
-                                    <action>
-                                        <execute />
-                                    </action>
-                                </pluginExecution>
-                                <pluginExecution>
-                                    <pluginExecutionFilter>
-                                        <groupId>org.antlr</groupId>
-                						<artifactId>antlr3-maven-plugin</artifactId>
-                                        <versionRange>[1.0.0,)</versionRange>
-                                        <goals>
-                                            <goal>antl</goal>
                                         </goals>
                                     </pluginExecutionFilter>
                                     <action>

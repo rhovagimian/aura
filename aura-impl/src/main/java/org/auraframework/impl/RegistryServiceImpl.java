@@ -27,7 +27,9 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 
 import javax.annotation.PostConstruct;
 import javax.inject.Inject;
@@ -38,36 +40,34 @@ import org.auraframework.adapter.ConfigAdapter;
 import org.auraframework.adapter.ExceptionAdapter;
 import org.auraframework.adapter.RegistryAdapter;
 import org.auraframework.annotations.Annotations.ServiceComponent;
+import org.auraframework.cache.Cache;
 import org.auraframework.def.DefDescriptor;
 import org.auraframework.def.DefDescriptor.DefType;
-import org.auraframework.def.Definition;
 import org.auraframework.impl.compound.controller.CompoundControllerDefFactory;
 import org.auraframework.impl.controller.AuraStaticControllerDefRegistry;
-import org.auraframework.impl.java.controller.JavaControllerDefFactory;
-import org.auraframework.impl.java.model.JavaModelDefFactory;
-import org.auraframework.impl.java.provider.JavaProviderDefFactory;
-import org.auraframework.impl.java.provider.JavaTokenDescriptorProviderDefFactory;
-import org.auraframework.impl.java.provider.JavaTokenMapProviderDefFactory;
-import org.auraframework.impl.java.renderer.JavaRendererDefFactory;
-import org.auraframework.impl.java.type.JavaTypeDefFactory;
-import org.auraframework.impl.parser.ParserFactory;
+import org.auraframework.impl.java.JavaSourceLoader;
 import org.auraframework.impl.source.SourceFactory;
+import org.auraframework.impl.source.file.FileBundleSourceLoader;
 import org.auraframework.impl.source.file.FileSourceLoader;
+import org.auraframework.impl.source.resource.ResourceBundleSourceLoader;
 import org.auraframework.impl.source.resource.ResourceSourceLoader;
-import org.auraframework.impl.system.CacheableDefFactoryImpl;
-import org.auraframework.impl.system.CachingDefRegistryImpl;
 import org.auraframework.impl.system.CompilingDefRegistry;
 import org.auraframework.impl.system.NonCachingDefRegistryImpl;
 import org.auraframework.impl.system.PassThroughDefRegistry;
 import org.auraframework.impl.system.RegistryTrie;
 import org.auraframework.impl.system.StaticDefRegistryImpl;
 import org.auraframework.impl.type.AuraStaticTypeDefRegistry;
+import org.auraframework.service.CachingService;
+import org.auraframework.service.CompilerService;
 import org.auraframework.service.DefinitionService;
 import org.auraframework.service.RegistryService;
 import org.auraframework.system.AuraContext.Authentication;
 import org.auraframework.system.AuraContext.Mode;
+import org.auraframework.system.BundleSource;
 import org.auraframework.system.DefRegistry;
+import org.auraframework.system.FileBundleSourceBuilder;
 import org.auraframework.system.RegistrySet;
+import org.auraframework.system.RegistrySet.RegistrySetKey;
 import org.auraframework.system.SourceListener;
 import org.auraframework.system.SourceLoader;
 import org.auraframework.throwable.AuraRuntimeException;
@@ -75,6 +75,9 @@ import org.auraframework.util.FileMonitor;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
+import com.google.common.util.concurrent.ExecutionError;
+import com.google.common.util.concurrent.UncheckedExecutionException;
 
 @ServiceComponent
 public class RegistryServiceImpl implements RegistryService, SourceListener {
@@ -86,18 +89,26 @@ public class RegistryServiceImpl implements RegistryService, SourceListener {
 
     private ExceptionAdapter exceptionAdapter;
 
-    private ParserFactory parserFactory;
+    @Inject
+    private CompilerService compilerService;
 
     @Inject
     private Optional<Collection<RegistryAdapter>> adaptersInject;
 
+    @Inject
+    Collection<FileBundleSourceBuilder> builders;
+
     private Collection<RegistryAdapter> adapters;
+
+    private CachingService cachingService;
 
     private List<ComponentLocationAdapter> locationAdapters;
 
     private static final Logger _log = Logger.getLogger(RegistryService.class);
 
     private ConcurrentHashMap<ComponentLocationAdapter, SourceLocationInfo> locationMap = new ConcurrentHashMap<>();
+
+    private static String SERVICECOMPONENT_PREFIX = "servicecomponent";
 
     private static final Set<String> markupPrefixes = ImmutableSet.of(
             DefDescriptor.MARKUP_PREFIX,
@@ -106,47 +117,53 @@ public class RegistryServiceImpl implements RegistryService, SourceListener {
             DefDescriptor.CUSTOM_FLAVOR_PREFIX,
             DefDescriptor.JAVASCRIPT_PREFIX);
 
-    private static final Set<DefType> markupDefTypes = EnumSet.of(
+    private static final Set<DefType> allMarkupDefTypes = EnumSet.of(
             DefType.APPLICATION,
             DefType.COMPONENT,
+            DefType.EVENT,
+            DefType.INTERFACE,
+            DefType.LIBRARY,
+
             DefType.CONTROLLER,
             DefType.DESIGN,
             DefType.DOCUMENTATION,
-            DefType.EVENT,
             DefType.FLAVOR_BUNDLE,
             DefType.FLAVORED_STYLE,
             DefType.FLAVORS,
             DefType.HELPER,
             DefType.INCLUDE,
-            DefType.INTERFACE,
-            DefType.LIBRARY,
             DefType.MODEL,
             DefType.PROVIDER,
             DefType.RENDERER,
-            DefType.RESOURCE,
             DefType.STYLE,
             DefType.SVG,
             DefType.TESTSUITE,
             DefType.TOKENS
             );
 
+    private static final Set<String> moduleMarkupPrefixes = ImmutableSet.of(DefDescriptor.MARKUP_PREFIX,
+            DefDescriptor.JAVASCRIPT_PREFIX, DefDescriptor.CSS_PREFIX);
+
+    private static final Set<DefType> moduleDefTypes = EnumSet.of(DefType.MODULE);
+
+    // Subtracts supported bundle source DefTypes in order to create two separate registries
+    // for FileSourceLoader and FileBundleSourceLoader
+    private static final Set<DefType> markupDefTypes = Sets.difference(allMarkupDefTypes, BundleSource.bundleDefTypes);
+
     private static class SourceLocationInfo {
         public final List<DefRegistry> staticLocationRegistries;
-        public final List<SourceLoader> javaSourceLoaders;
         public final List<DefRegistry> markupRegistries;
         public final String baseDir;
         private boolean changed;
 
         public SourceLocationInfo(DefRegistry[] staticLocationRegistries, String baseDir,
-                List<DefRegistry> markupRegistries,
-                List<SourceLoader> javaSourceLoaders) {
+                List<DefRegistry> markupRegistries) {
             List<DefRegistry> slr_list = null;
             if (staticLocationRegistries != null) {
                 slr_list = Arrays.asList(staticLocationRegistries);
             }
             this.staticLocationRegistries = slr_list;
             this.markupRegistries = markupRegistries;
-            this.javaSourceLoaders = javaSourceLoaders;
             this.baseDir = baseDir;
             this.changed = false;
         }
@@ -199,7 +216,7 @@ public class RegistryServiceImpl implements RegistryService, SourceListener {
 
         String pkg = location.getComponentSourcePackage();
         if (pkg != null) {
-            ris = location.getClass().getResourceAsStream(pkg + "/.registries");
+            ris = location.getClass().getClassLoader().getResourceAsStream(pkg + "/.registries");
         } else {
             File compSource = location.getComponentSourceDir();
             if (compSource != null && compSource.canRead()) {
@@ -241,17 +258,21 @@ public class RegistryServiceImpl implements RegistryService, SourceListener {
     }
 
     private SourceLocationInfo createSourceLocationInfo(ComponentLocationAdapter location) {
+        boolean modules = location.type() == DefType.MODULE;
         DefRegistry[] staticRegs = getStaticRegistries(location);
         String pkg = location.getComponentSourcePackage();
         String canonical = null;
         List<SourceLoader> markupLoaders = Lists.newArrayList();
-        List<SourceLoader> javaLoaders = Lists.newArrayList();
         List<DefRegistry> markupRegistries = Lists.newArrayList();
+        Set<String> prefixes = modules? moduleMarkupPrefixes : markupPrefixes;
+        DefRegistry defRegistry = null;
         if (pkg != null) {
             ResourceSourceLoader rsl = new ResourceSourceLoader(pkg);
             markupLoaders.add(rsl);
-            javaLoaders.add(rsl);
-            markupRegistries.add(new CompilingDefRegistry(rsl, markupPrefixes, markupDefTypes, parserFactory));
+            markupRegistries.add(new CompilingDefRegistry(rsl, markupPrefixes, markupDefTypes, compilerService));
+            markupRegistries.add(new CompilingDefRegistry(
+                            new ResourceBundleSourceLoader(pkg, fileMonitor, builders),
+                            markupPrefixes, BundleSource.bundleDefTypes, compilerService));
         } else if (location.getComponentSourceDir() != null) {
             File components = location.getComponentSourceDir();
             if (!components.canRead() || !components.canExecute() || !components.isDirectory()) {
@@ -259,17 +280,23 @@ public class RegistryServiceImpl implements RegistryService, SourceListener {
             } else {
                 FileSourceLoader fsl = new FileSourceLoader(components, fileMonitor);
                 markupLoaders.add(fsl);
-                markupRegistries.add(new CompilingDefRegistry(fsl, markupPrefixes, markupDefTypes, parserFactory));
-                File javaBase = new File(components.getParent(), "java");
-                if (javaBase.exists()) {
-                    javaLoaders.add(new FileSourceLoader(javaBase, fileMonitor));
+                if (!modules) { // modules requires BundleSource to allow multiple js/css files so skip FileSourceLoader
+
+                    // markupDefTypes is the difference between all and BundleSource DefTypes
+                    // Thus, creating two CompilingDefRegistry, FileSourceLoader and FileBundleSourceLoader
+                    // works without DefType registry conflicts
+                    defRegistry = new CompilingDefRegistry(fsl, prefixes, markupDefTypes, compilerService);
+                    markupRegistries.add(defRegistry);
                 }
+                defRegistry = new CompilingDefRegistry(
+                            new FileBundleSourceLoader(components, fileMonitor, builders),
+                        prefixes, modules ? moduleDefTypes : BundleSource.bundleDefTypes, compilerService);
+                markupRegistries.add(defRegistry);
                 File generatedJavaBase = location.getJavaGeneratedSourceDir();
                 if (generatedJavaBase != null && generatedJavaBase.exists()) {
                     fsl = new FileSourceLoader(generatedJavaBase, fileMonitor);
                     markupLoaders.add(fsl);
-                    markupRegistries.add(new CompilingDefRegistry(fsl, markupPrefixes, markupDefTypes, parserFactory));
-                    javaLoaders.add(fsl);
+                    markupRegistries.add(new CompilingDefRegistry(fsl, prefixes, markupDefTypes, compilerService));
                 }
                 try {
                     canonical = components.getCanonicalPath();
@@ -283,10 +310,16 @@ public class RegistryServiceImpl implements RegistryService, SourceListener {
             if (!loaders.isEmpty()) {
                 markupLoaders.addAll(loaders);
                 for (SourceLoader loader : loaders) {
-                    markupRegistries.add(new PassThroughDefRegistry(loader, markupDefTypes, markupPrefixes, true, parserFactory));
+                    markupRegistries.add(new PassThroughDefRegistry(loader, markupDefTypes, prefixes, true, compilerService));
                 }
             }
         }
+        
+        if (modules && defRegistry != null) {
+            // register namespaces to optimize processing of definition references
+            configAdapter.addModuleNamespaces(defRegistry.getNamespaces());
+        }
+        
         //
         // Ooh, now _this_ is ugly. Because internal namespaces are tracked by the
         // SourceFactory constructor, we'd best build a source factory for every loader.
@@ -301,7 +334,7 @@ public class RegistryServiceImpl implements RegistryService, SourceListener {
                 }
             }
         }
-        return new SourceLocationInfo(staticRegs, canonical, markupRegistries, javaLoaders);
+        return new SourceLocationInfo(staticRegs, canonical, markupRegistries);
     }
 
     private SourceLocationInfo getSourceLocationInfo(ComponentLocationAdapter location) {
@@ -319,8 +352,6 @@ public class RegistryServiceImpl implements RegistryService, SourceListener {
      */
     private List<DefRegistry> getCLARegistries() {
         Collection<ComponentLocationAdapter> markupLocations = getAllComponentLocationAdapters();
-        List<SourceLoader> markupLoaders = Lists.newArrayList();
-        List<SourceLoader> javaLoaders = Lists.newArrayList();
         List<DefRegistry> regBuild = Lists.newArrayList();
 
         regBuild.add(AuraStaticTypeDefRegistry.INSTANCE);
@@ -331,54 +362,79 @@ public class RegistryServiceImpl implements RegistryService, SourceListener {
                 if (!sli.isChanged() && sli.staticLocationRegistries != null) {
                     regBuild.addAll(sli.staticLocationRegistries);
                 } else {
-                regBuild.addAll(sli.markupRegistries);
-                    javaLoaders.addAll(sli.javaSourceLoaders);
+                    regBuild.addAll(sli.markupRegistries);
                 }
             }
         }
-
-        if (markupLoaders.size() > 0) {
-            SourceFactory markupSourceFactory = new SourceFactory(markupLoaders, configAdapter);
-            CacheableDefFactoryImpl<Definition> factory = new CacheableDefFactoryImpl<>(markupSourceFactory, parserFactory);
-            regBuild.add(new CachingDefRegistryImpl(factory, markupDefTypes, markupPrefixes));
-        }
-
         regBuild.add(new NonCachingDefRegistryImpl(new CompoundControllerDefFactory(exceptionAdapter),
                 DefType.CONTROLLER, DefDescriptor.COMPOUND_PREFIX));
 
-        // Gah! this is stupid.
-        if (javaLoaders.size() > 0) {
-            regBuild.add(new CachingDefRegistryImpl(
-                    new JavaControllerDefFactory(javaLoaders, definitionService),
-                    DefType.CONTROLLER, DefDescriptor.JAVA_PREFIX));
-            regBuild.add(new CachingDefRegistryImpl(
-                    new JavaRendererDefFactory(javaLoaders), DefType.RENDERER, DefDescriptor.JAVA_PREFIX));
-            regBuild.add(new CachingDefRegistryImpl(new JavaTypeDefFactory(javaLoaders),
-                    DefType.TYPE, DefDescriptor.JAVA_PREFIX));
-            regBuild.add(new CachingDefRegistryImpl(new JavaModelDefFactory(javaLoaders),
-                    DefType.MODEL, DefDescriptor.JAVA_PREFIX));
-            regBuild.add(new CachingDefRegistryImpl(new JavaProviderDefFactory(javaLoaders), DefType.PROVIDER,
-                    DefDescriptor.JAVA_PREFIX));
-            regBuild.add(new CachingDefRegistryImpl(new JavaTokenDescriptorProviderDefFactory(javaLoaders),
-                    DefType.TOKEN_DESCRIPTOR_PROVIDER, DefDescriptor.JAVA_PREFIX));
-            regBuild.add(new CachingDefRegistryImpl(new JavaTokenMapProviderDefFactory(javaLoaders),
-                    DefType.TOKEN_MAP_PROVIDER, DefDescriptor.JAVA_PREFIX));
-        }
+        regBuild.add(new PassThroughDefRegistry(new JavaSourceLoader(),
+                    Sets.newHashSet(DefType.CONTROLLER, DefType.RENDERER, DefType.TYPE, DefType.MODEL,
+                        DefType.PROVIDER, DefType.TOKEN_DESCRIPTOR_PROVIDER, DefType.TOKEN_MAP_PROVIDER),
+                    Sets.newHashSet(DefDescriptor.JAVA_PREFIX, SERVICECOMPONENT_PREFIX),
+                    true, compilerService));
         return regBuild;
     }
 
     @Override
     public RegistrySet getDefaultRegistrySet(Mode mode, Authentication access) {
+        if (cachingService == null || mode == null || access == null) {
+            return buildDefaultRegistrySet(mode, access);
+        }
+
+        Cache<RegistrySetKey, RegistrySet> cache = cachingService.getRegistrySetCache();
+        if (cache == null) {
+            return buildDefaultRegistrySet(mode, access);
+        }
+
+        // build cachekey
+        String sessionCacheKey = configAdapter.getSessionCacheKey();
+        if (sessionCacheKey == null) {
+
+            // if session cache key is null, it means that we're not caching this.
+            return buildDefaultRegistrySet(mode, access);
+        }
+
+        final RegistrySetKey registrySetCacheKey = new RegistrySetKey(mode, access, sessionCacheKey);
+
+        try {
+            return cache.get(registrySetCacheKey, new Callable<RegistrySet>() {
+
+                @Override
+                public RegistrySet call() throws Exception {
+                    RegistrySet res = buildDefaultRegistrySet(mode, access);
+
+                    if (res == null) {
+                        // see com.google.common.cache.Cache#get; this method may never return null.
+                        throw new NullPointerException("null RegistrySet for key=" + registrySetCacheKey);
+                    }
+                    return res;
+                }
+            });
+        } catch (UncheckedExecutionException e) {
+            // thrown if a unchecked exception was thrown in call
+            throw (RuntimeException)e.getCause();
+        } catch (ExecutionException e) {
+            // thrown if a checked exception was thrown in call
+            throw new RuntimeException(e.getCause());
+        } catch (ExecutionError e) {
+            // if an error was thrown while loading the value.
+            throw new Error(e.getCause());
+        }
+    }
+
+    // test accessible
+    RegistrySet buildDefaultRegistrySet(Mode mode, Authentication access) {
         List<DefRegistry> registries = getCLARegistries();
         for (RegistryAdapter adapter : adapters) {
             DefRegistry[] provided = adapter.getRegistries(mode, access, null);
-            if (registries != null) {
+            if (registries != null && provided != null) {
                 Collections.addAll(registries, provided);
             }
         }
         return new RegistryTrie(registries);
     }
-
 
     @Override
     public RegistrySet getRegistrySet(DefRegistry registry) {
@@ -388,6 +444,12 @@ public class RegistryServiceImpl implements RegistryService, SourceListener {
     @Override
     public RegistrySet getRegistrySet(Collection<DefRegistry> registries) {
         return new RegistryTrie(registries);
+    }
+
+    @Override
+    public DefRegistry getRegistry(File directory) {
+        return new CompilingDefRegistry(new FileBundleSourceLoader(directory, fileMonitor, builders),
+                            markupPrefixes, BundleSource.bundleDefTypes, compilerService);
     }
 
     private  Collection<ComponentLocationAdapter> getAllComponentLocationAdapters() {
@@ -469,18 +531,18 @@ public class RegistryServiceImpl implements RegistryService, SourceListener {
     }
 
     /**
-     * @return the parserFactory
+     * @return the compilerService
      */
-    public ParserFactory getParserFactory() {
-        return parserFactory;
+    public CompilerService getCompilerService() {
+        return compilerService;
     }
 
     /**
-     * @param parserFactory the parserFactory to set
+     * @param compilerService the compilerService to set
      */
     @Inject
-    public void setParserFactory(ParserFactory parserFactory) {
-        this.parserFactory = parserFactory;
+    public void setCompilerService(CompilerService compilerService) {
+        this.compilerService = compilerService;
     }
 
     /**
@@ -520,4 +582,10 @@ public class RegistryServiceImpl implements RegistryService, SourceListener {
     public void setExceptionAdapter(ExceptionAdapter exceptionAdapter) {
         this.exceptionAdapter = exceptionAdapter;
     }
+
+    @Inject
+    public void setCachingService(CachingService cachingService) {
+        this.cachingService = cachingService;
+    }
+
 }

@@ -31,22 +31,26 @@ Test.Aura.Component.ComponentTest=function(){
     Mocks.GetMocks(Object.Global(), {
         "Aura": Aura,
         "Component": function(){}, // Prevent Global
-        "InvalidComponent": function(){}, // Prevent Global
         "AttributeSet": function(){} // Prevent Global
     })(function(){
         [Import("aura-impl/src/main/resources/aura/component/Component.js"),
          Import("aura-impl/src/main/resources/aura/component/EventValueProvider.js"),
          Import("aura-impl/src/main/resources/aura/component/StyleValueProvider.js"),
          Import("aura-impl/src/main/resources/aura/component/ActionValueProvider.js"),
-         Import("aura-impl/src/main/resources/aura/attribute/AttributeSet.js"),
-         Import("aura-impl/src/main/resources/aura/component/InvalidComponent.js")]
+         Import("aura-impl/src/main/resources/aura/attribute/AttributeSet.js")]
     });
+
+    delete StyleValueProvider;
+    delete ActionValueProvider;
+    delete EventValueProvider;
 
     function mockFramework(during){
         var mock = {
             "Component": Aura.Component.Component,
-            "InvalidComponent": Aura.Component.InvalidComponent,
             "AttributeSet": Aura.Attribute.AttributeSet,
+            "StyleValueProvider": Aura.Component.StyleValueProvider,
+            "ActionValueProvider": Aura.Component.ActionValueProvider,
+            "EventValueProvider": Aura.Component.EventValueProvider,
             "$A": {
                 assert:function(condition,message){if(!condition)throw new Error(message)},
                 error:function(message){throw new Error(message)},
@@ -115,7 +119,8 @@ Test.Aura.Component.ComponentTest=function(){
                     normalize:function(target){return target}
                 },
                 renderingService:{
-                    unrender:function(){}
+                    unrender:function(){},
+                    getMarker:function(){}
                 },
                 util:{
                     apply:function(){
@@ -148,21 +153,6 @@ Test.Aura.Component.ComponentTest=function(){
     }
     [Fixture]
     function DeIndex() {
-        //this cover when component is invalid
-        [Fact]
-        function ReturnsNullForInvalidComponent() {
-            //Arrange
-            var target = null;
-            mockFramework(function(){
-                target = new Aura.Component.Component({},true);
-                target.isValid = function() {return false};
-            });
-            //Act
-            var actual = target.deIndex(null,null);
-            //Assert
-            Assert.Null(actual);
-        }
-
         //this cover when localIndex does not exist
         [Fact]
         function ReturnsNullForNullIndex() {
@@ -302,21 +292,6 @@ Test.Aura.Component.ComponentTest=function(){
 
     [Fixture]
     function Index() {
-        //this cover when component is invalid
-        [Fact]
-        function ReturnsNullForInvalidComponent() {
-            //Arrange
-            var target = null;
-            mockFramework(function(){
-                target = new Aura.Component.Component({},true);
-                target.assertValid = function(){return false};
-            });
-            //Act
-            var actual = target.index(null,null);
-            //Assert
-            Assert.Null(actual);
-        }
-
         //this cover when index[locaid] does not exist
         [Fact]
         function InitLocalIdWithGlobalId() {
@@ -501,22 +476,6 @@ Test.Aura.Component.ComponentTest=function(){
 
     [Fixture]
     function GetDef() {
-        [Fact]
-        function ReturnsNullForInvalidComponent() {
-            // Arrange
-            var target = null;
-            mockFramework(function() {
-                target = new Aura.Component.Component({},true);
-                target.destroy(false);
-            });
-
-            // Act
-            var actual = target.getDef();
-
-            // Assert
-            Assert.Null(actual);
-        }
-
         [Fact]
         function ReturnsComponentDef() {
             // Arrange

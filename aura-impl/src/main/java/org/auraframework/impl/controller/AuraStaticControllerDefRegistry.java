@@ -41,7 +41,6 @@ public class AuraStaticControllerDefRegistry extends StaticDefRegistryImpl {
 
     public static final String COMPONENT_CONTROLLER = "aura://ComponentController";
     public static final String LABEL_CONTROLLER = "aura://LabelController";
-    public static final String TIMEZONEINFO_CONTROLLER = "aura://TimeZoneInfoController";
     public static final String STYLE_CONTROLLER = "aura://StyleController";
 
     private static final Set<String> prefixes = Sets.newHashSet(PREFIX);
@@ -64,7 +63,8 @@ public class AuraStaticControllerDefRegistry extends StaticDefRegistryImpl {
     private static synchronized Collection<Definition> getDefs(DefinitionService definitionService) {
         if (allMap == null) {
             try {
-                JavaControllerDefFactory jcdf = new JavaControllerDefFactory(null, definitionService);
+                JavaControllerDefFactory jcdf = new JavaControllerDefFactory();
+                jcdf.setDefinitionService(definitionService);
                 ImmutableMap.Builder<DefDescriptor<? extends Definition>, Definition> builder;
                 ControllerDef cd;
                 DefDescriptor<ControllerDef> descriptor;
@@ -76,10 +76,6 @@ public class AuraStaticControllerDefRegistry extends StaticDefRegistryImpl {
 
                 descriptor = new DefDescriptorImpl<>(LABEL_CONTROLLER, ControllerDef.class, null);
                 cd = jcdf.getDef_DONOTUSE(descriptor, LabelController.class);
-                builder.put(cd.getDescriptor(), cd);
-
-                descriptor = new DefDescriptorImpl<>(TIMEZONEINFO_CONTROLLER, ControllerDef.class, null);
-                cd = jcdf.getDef_DONOTUSE(descriptor, TimeZoneInfoController.class);
                 builder.put(cd.getDescriptor(), cd);
 
                 descriptor = new DefDescriptorImpl<>(STYLE_CONTROLLER, ControllerDef.class, null);

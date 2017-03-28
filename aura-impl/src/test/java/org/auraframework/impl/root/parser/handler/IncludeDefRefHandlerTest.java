@@ -29,9 +29,9 @@ import org.auraframework.def.IncludeDef;
 import org.auraframework.def.IncludeDefRef;
 import org.auraframework.impl.AuraImplTestCase;
 import org.auraframework.impl.root.parser.handler.XMLHandler.InvalidSystemAttributeException;
+import org.auraframework.impl.source.StringSource;
 import org.auraframework.system.Parser.Format;
-import org.auraframework.system.Source;
-import org.auraframework.test.source.StringSource;
+import org.auraframework.system.TextSource;
 import org.auraframework.throwable.AuraRuntimeException;
 import org.auraframework.throwable.quickfix.InvalidDefinitionException;
 import org.junit.Test;
@@ -50,7 +50,7 @@ public class IncludeDefRefHandlerTest extends AuraImplTestCase {
     @Mock
     RootTagHandler<?> parentHandler;
 
-    private XMLStreamReader getReader(Source<?> source) throws XMLStreamException {
+    private XMLStreamReader getReader(TextSource<?> source) throws XMLStreamException {
         XMLInputFactory xmlInputFactory = XMLInputFactory.newInstance();
         xmlInputFactory.setProperty(XMLInputFactory.IS_NAMESPACE_AWARE, false);
         XMLStreamReader xmlReader = xmlInputFactory.createXMLStreamReader(source.getSystemId(),
@@ -105,23 +105,6 @@ public class IncludeDefRefHandlerTest extends AuraImplTestCase {
     }
 
     @Test
-    public void testGetElementWithoutName() throws Exception {
-        StringSource<IncludeDefRef> source = new StringSource<>(descriptor, String.format(
-                "<%s/>", IncludeDefRefHandler.TAG), "myID", Format.XML);
-        Mockito.doReturn(DefType.LIBRARY).when(parentDescriptor).getDefType();
-        Mockito.doReturn(parentDescriptor).when(parentHandler).getDefDescriptor();
-        IncludeDefRefHandler handler = new IncludeDefRefHandler(parentHandler, getReader(source), source, definitionService);
-
-        try {
-            handler.getElement();
-            fail("Name should be required for Include");
-        } catch (InvalidDefinitionException t) {
-            assertExceptionMessageEndsWith(t, InvalidDefinitionException.class,
-                    String.format("%s must specify a valid JavaScript file name.", IncludeDefRefHandler.TAG));
-        }
-    }
-
-    @Test
     public void testGetElementWithInvalidName() throws Exception {
         StringSource<IncludeDefRef> source = new StringSource<>(descriptor, String.format(
                 "<%s name='this is invalid'/>", IncludeDefRefHandler.TAG), "myID", Format.XML);
@@ -134,7 +117,7 @@ public class IncludeDefRefHandlerTest extends AuraImplTestCase {
             fail("Name should be required for Include");
         } catch (AuraRuntimeException t) {
             assertExceptionMessageEndsWith(t, AuraRuntimeException.class,
-                    String.format("Invalid Descriptor Format: null.this is invalid[%s]", DefType.INCLUDE));
+                    String.format("Invalid Descriptor Format: js://null.this is invalid[%s]", DefType.INCLUDE));
         }
     }
 

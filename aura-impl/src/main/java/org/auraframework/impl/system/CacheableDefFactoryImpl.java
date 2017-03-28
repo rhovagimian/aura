@@ -15,40 +15,35 @@
  */
 package org.auraframework.impl.system;
 
+import java.util.Set;
+
 import org.auraframework.def.DefDescriptor;
 import org.auraframework.def.Definition;
 import org.auraframework.def.DescriptorFilter;
-import org.auraframework.impl.parser.ParserFactory;
 import org.auraframework.impl.source.SourceFactory;
+import org.auraframework.service.CompilerService;
 import org.auraframework.system.CacheableDefFactory;
-import org.auraframework.system.Parser;
 import org.auraframework.system.Source;
 import org.auraframework.throwable.quickfix.QuickFixException;
 
-import java.util.Set;
-
 public class CacheableDefFactoryImpl<D extends Definition> extends DefFactoryImpl<D> implements CacheableDefFactory<D> {
     private final SourceFactory sourceFactory;
-    private final ParserFactory parserFactory;
+    private final CompilerService compilerService;
 
-    public CacheableDefFactoryImpl(SourceFactory sourceFactory, ParserFactory parserFactory) {
+    public CacheableDefFactoryImpl(SourceFactory sourceFactory, CompilerService compilerService) {
         this.sourceFactory = sourceFactory;
-        this.parserFactory = parserFactory;
+        this.compilerService = compilerService;
     }
 
     @Override
     public D getDef(DefDescriptor<D> descriptor) throws QuickFixException {
         Source<D> source = sourceFactory.getSource(descriptor);
-        if (source != null && source.exists()) {
+        if (source != null) {
 
             // Update the descriptor to respect the canonical case from the source.
             descriptor = source.getDescriptor();
-
-            Parser<D> parser = parserFactory.getParser(source.getFormat(), descriptor);
-            D def = parser.parse(descriptor, source);
-            return def;
+            return compilerService.compile(descriptor, source);
         }
-
         return null;
     }
 
@@ -65,7 +60,7 @@ public class CacheableDefFactoryImpl<D extends Definition> extends DefFactoryImp
     @Override
     public boolean exists(DefDescriptor<D> descriptor) {
         Source<D> s = getSource(descriptor);
-        return s != null && s.exists();
+        return s != null;
     }
 
     @Override

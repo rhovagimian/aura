@@ -27,7 +27,8 @@ import org.auraframework.system.AuraContext;
 import org.auraframework.system.AuraContext.Authentication;
 import org.auraframework.system.AuraContext.Format;
 import org.auraframework.system.AuraContext.Mode;
-import org.auraframework.system.Source;
+import org.auraframework.util.test.annotation.UnAdaptableTest;
+import org.auraframework.system.TextSource;
 import org.junit.Assert;
 import org.junit.Test;
 import org.openqa.selenium.By;
@@ -172,6 +173,7 @@ public class MarkupCaseSensitivityUITest extends AbstractErrorUITestCase {
      * then reload the testApp, it still loads fine, and what we changed is updated in lib too (verify through helper).
      *   fix it and enable plz: W-2984818   
      */
+    @UnAdaptableTest
     @Test
     public void testLibFileChangeAfterCached() throws Exception {
         //load the test app, and verify the lib loads fine
@@ -196,7 +198,7 @@ public class MarkupCaseSensitivityUITest extends AbstractErrorUITestCase {
         util.addSourceAutoCleanup(rootHelperDesc, rootHelper);
         String url = "/"+root.getNamespace()+"/"+root.getName()+".app";
         open(url, Mode.DEV);
-        waitForElementAppear(By.className(testLibButtonClass));
+        getAuraUITestingUtil().waitForElement(By.className(testLibButtonClass));
         findDomElement(By.className(testLibButtonClass)).click();
         //change lib source
         AuraContext context = contextService.getCurrentContext();
@@ -206,11 +208,11 @@ public class MarkupCaseSensitivityUITest extends AbstractErrorUITestCase {
         }
         //ApplicationDef ad = definitionService.getDefinition(root);
         //List<LibraryDefRef> aid = ad.getImports();
-        Source<?> source = null;
-        source = definitionService.getSource(lib);
+        TextSource<?> source = null;
+        source = (TextSource<?>)definitionService.getSource(lib);
         String originalContent = source.getContents();
         String newSource = originalContent.replace("basicFirst", "BASICFirst");
-        if(source != null && newSource != null) {
+        if(newSource != null) {
             //update the test_Library.lib source, then refresh
             getAuraTestingUtil().updateSource(lib, newSource);
             //refresh the testApp, until it pick up the source change in test_Library.lib
@@ -220,10 +222,10 @@ public class MarkupCaseSensitivityUITest extends AbstractErrorUITestCase {
                         public Integer apply(WebDriver driver) {
                             driver.navigate().refresh();
                             //click the button
-                            waitForElementAppear(By.className(testLibButtonClass));
+                            getAuraUITestingUtil().waitForElement(By.className(testLibButtonClass));
                             findDomElement(By.className(testLibButtonClass)).click();
                             //get the text from output div
-                            waitForElementAppear(By.className(testLibButtonClass));
+                            getAuraUITestingUtil().waitForElement(By.className(testLibButtonClass));
                             String text = findDomElement(By.className(outputDivClass)).getText();
                             if(text.contains("BASICFirst")) {
                                 return 1;

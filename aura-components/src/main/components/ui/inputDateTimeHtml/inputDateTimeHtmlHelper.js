@@ -14,31 +14,32 @@
  * limitations under the License.
  */
 ({
-    formatValue: function(component) {
-        var value = component.get("v.value"),
-            displayValue = value,
-            inputElement = component.find("inputDateTimeHtml").getElement();
+    formatValue: function (component) {
+        var value = component.get("v.value");
+        var inputElement = component.find("inputDateTimeHtml").getElement();
 
-        if (value && inputElement) {
+        if (!$A.util.isEmpty(value)) {
             var isoDate = $A.localizationService.parseDateTimeISO8601(value);
             var timezone = component.get("v.timezone");
 
-            $A.localizationService.UTCToWallTime(isoDate, timezone, function(walltime) {
+            $A.localizationService.UTCToWallTime(isoDate, timezone, function (walltime) {
                 walltime = $A.localizationService.translateToOtherCalendar(walltime);
                 var walltimeISO = $A.localizationService.toISOString(walltime);
 
                 // datetime-local input doesn't support any time zone offset information,
                 // so we need to remove the 'Z' off of the end.
-                displayValue = walltimeISO.split("Z", 1)[0] || walltimeISO;
+                var displayValue = walltimeISO.split("Z", 1)[0] || walltimeISO;
                 inputElement.value = displayValue;
             });
+        } else {
+            inputElement.value = "";
         }
     },
 
     /**
      * Override
      */
-    doUpdate : function(component, value) {
+    doUpdate: function (component, value) {
         var isoDate = $A.localizationService.parseDateTimeUTC(value);
         var timezone = component.get("v.timezone");
 

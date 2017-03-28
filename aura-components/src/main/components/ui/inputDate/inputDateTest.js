@@ -58,9 +58,9 @@
      */
     testInvalidFormat: {
         browsers: ['DESKTOP'],
-        attributes: {displayDatePicker: 'true', format: 'KKKKKK'},
+        attributes: {displayDatePicker: 'true', format: 'KKKKKK', loadDatePicker: 'true'},
         test: [function (cmp) {
-            cmp.find("datePicker").get('c.selectToday').runDeprecated();
+            cmp.find("datePicker").find("grid").selectToday();
         }, function (cmp) {
             var inputDateStr = cmp.find("inputText").getElement().value;
             var dt = moment().format('KKKKKK');
@@ -82,8 +82,9 @@
 
     /**
      * Verify behavior when 'langLocale' attribute is assigned a different value.
+     * TODO: The usage is not valid anymore. Needs to change the app's locale on the server side.
      */
-    testLangLocale: {
+    _testLangLocale: {
         browsers: ['DESKTOP'],
         attributes: {displayDatePicker: 'true', format: 'MMMM dd, yyyy', value: '2012-09-10', langLocale: 'es'},
         test: function (cmp) {
@@ -119,14 +120,14 @@
     /**
      * Verify behavior of Today() with default 'format' value.
      */
-    // TODO(W-2671175): Fails due to GMT/PST timezone difference for user.timezone and actual timezone
-    _testToday: {
-        attributes: {displayDatePicker: 'true', format: 'MMM dd, yyyy'},
+    testToday: {
+        attributes: {displayDatePicker: 'true', format: 'MMM dd, yyyy', loadDatePicker: 'true'},
         test: [function (cmp) {
-            cmp.find("datePicker").get('c.selectToday').runDeprecated();
+            cmp.find("datePicker").find("grid").selectToday();
         }, function (cmp) {
             var inputDateStr = cmp.find("inputText").getElement().value;
-            var dt = moment().format('MMM DD, YYYY');
+            var todayStr = cmp.find("datePicker").find("grid").get('v._today');
+            var dt = moment(todayStr).format('MMM DD, YYYY');
             $A.test.assertEquals(dt, inputDateStr, "Dates are not the same and they should be");
         }]
     },
@@ -134,14 +135,14 @@
     /**
      * Verify behavior of Today() when 'format' is assigned a valid value.
      */
-    // TODO(W-2671175): Fails due to GMT/PST timezone difference for user.timezone and actual timezone
-    _testTodayDifferentFormat: {
-        attributes: {displayDatePicker: 'true', format: 'DD/MM/YYYY'},
+    testTodayDifferentFormat: {
+        attributes: {displayDatePicker: 'true', format: 'DD/MM/YYYY',  loadDatePicker: 'true'},
         test: [function (cmp) {
-            cmp.find("datePicker").get('c.selectToday').runDeprecated();
+            cmp.find("datePicker").find("grid").selectToday();
         }, function (cmp) {
             var inputDateStr = cmp.find("inputText").getElement().value;
-            var dt = moment().format('DD/MM/YYYY');
+            var todayStr = cmp.find("datePicker").find("grid").get('v._today');
+            var dt = moment(todayStr).format('DD/MM/YYYY');
             $A.test.assertEquals(dt, inputDateStr, "Dates are not the same and they should be");
         }]
     },
@@ -151,7 +152,7 @@
      */
     testDatePickerWithLabel: {
         browsers: ['DESKTOP'],
-        attributes: {displayDatePicker: 'true', label: 'my date cmp'},
+        attributes: {displayDatePicker: 'true', label: 'my date cmp', loadDatePicker: 'true'},
         test: function (cmp) {
             var datePickerOpener = cmp.find("datePickerOpener");
             $A.test.assertNotNull(datePickerOpener, "datePickerOpener anchor not present");

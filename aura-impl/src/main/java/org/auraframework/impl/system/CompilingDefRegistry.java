@@ -22,9 +22,8 @@ import org.auraframework.def.DefDescriptor;
 import org.auraframework.def.DefDescriptor.DefType;
 import org.auraframework.def.Definition;
 import org.auraframework.def.DescriptorFilter;
-import org.auraframework.impl.parser.ParserFactory;
+import org.auraframework.service.CompilerService;
 import org.auraframework.system.DefRegistry;
-import org.auraframework.system.Parser;
 import org.auraframework.system.Source;
 import org.auraframework.system.SourceLoader;
 import org.auraframework.throwable.quickfix.QuickFixException;
@@ -40,7 +39,7 @@ public class CompilingDefRegistry implements DefRegistry {
     private final Set<String> prefixes;
     private final Set<String> namespaces;
     private final Map<DefDescriptor<?>, DefHolder> registry;
-    private final ParserFactory parserFactory;
+    private final CompilerService compilerService;
     private String name;
 
     private static class DefHolder {
@@ -54,7 +53,7 @@ public class CompilingDefRegistry implements DefRegistry {
     }
 
     public CompilingDefRegistry(SourceLoader sourceLoader, Set<String> prefixes, Set<DefType> defTypes,
-                                ParserFactory parserFactory) {
+                                CompilerService compilerService) {
         this.sourceLoader = sourceLoader;
         this.namespaces = Sets.newHashSet();
         this.registry = Maps.newHashMap();
@@ -63,7 +62,7 @@ public class CompilingDefRegistry implements DefRegistry {
             this.prefixes.add(prefix.toLowerCase());
         }
         this.defTypes = defTypes;
-        this.parserFactory = parserFactory;
+        this.compilerService = compilerService;
         reset();
     }
 
@@ -71,6 +70,7 @@ public class CompilingDefRegistry implements DefRegistry {
     public void reset() {
         namespaces.clear();
         registry.clear();
+        sourceLoader.reset();
 
         namespaces.addAll(sourceLoader.getNamespaces());
         Set<DefDescriptor<?>> descriptors = sourceLoader.find(new DescriptorFilter("*://*:*"));
@@ -96,12 +96,7 @@ public class CompilingDefRegistry implements DefRegistry {
                 try {
                     @SuppressWarnings("unchecked")
                     DefDescriptor<Definition> canonical = (DefDescriptor<Definition>)holder.descriptor;
-                    Source<Definition> source = sourceLoader.getSource(canonical);
-                    if (source != null && source.exists()) {
-                        Parser<Definition> parser = parserFactory.getParser(source.getFormat(), canonical);
-                        holder.def = parser.parse(canonical, source);
-                        holder.def.validateDefinition();
-                    }
+                    holder.def = compilerService.compile(sourceLoader, canonical);
                 } catch (QuickFixException qfe) {
                     holder.qfe = qfe;
                 }

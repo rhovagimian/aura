@@ -285,7 +285,7 @@
 
         var title = document.getElementById("title");
         // go up 3 levels since we will have access to first 2 levels
-        var greatGrandParentNode = title.parentNode.parentNode.parentNode;
+        var greatGrandParentNode = title.parentNode.parentNode.parentNode.parentNode;
 
         testUtils.assertEquals(null, greatGrandParentNode, "Element.parentNode should return null when it is not accessible");
     },
@@ -417,9 +417,38 @@
 
     testGetSetInvalidAttributes: function(cmp) {
         var testUtils = cmp.get("v.testUtils");
+        // Verify that warning messages. There should be 3 of these, verifying just 1 for sanity check
+        testUtils.expectAuraWarning('SecureElement: [object HTMLButtonElement]{ key: {"namespace":"lockerTest"} } does not allow getting/setting the href attribute, ignoring!');
+
         var button = document.createElement("button");
         testUtils.assertNull(button.getAttribute("href"), "Should have got null when trying to access invalid attributes");
         testUtils.assertUndefined(button.setAttribute("href", "/foo"), "Should return undefined when trying to set invalid attributes on dom element");
         testUtils.assertNull(button.getAttribute("href"), "Accessing invalid attribute values should continue to return undefined");
+    },
+
+    testLabelForInput: function(cmp) {
+        var testUtils = cmp.get("v.testUtils");
+        var labelElement = cmp.find("labelFor").getElement();
+        testUtils.assertEquals("labelFor_Id", labelElement.htmlFor);
+        testUtils.assertEquals("labelFor_Id", labelElement.getAttribute("for"));
+        labelElement.setAttribute("for", "woLabel_Id");
+        testUtils.assertEquals("woLabel_Id", labelElement.getAttribute("for"));
+    },
+
+    testForAttributeAllowedOnLabelOnly: function(cmp) {
+        var testUtils = cmp.get("v.testUtils");
+        // Negative test case to verify that "for" attribute cannot be read from other dom element types
+        testUtils.expectAuraWarning('SecureElement: [object HTMLDivElement]{ key: {"namespace":"lockerTest"} } does not allow getting/setting the for attribute, ignoring!');
+        testUtils.assertNull(cmp.find("title").getElement().getAttribute("for"), "Should have got null when trying to access 'for' attributes on a div");
+    },
+
+    // Verify that element can traverse up the dom hierarchy using parentNode property
+    testRecursiveTraversal: function(cmp, event, helper){
+        var testUtils = cmp.get("v.testUtils");
+        var element = cmp.find("title").getElement();
+        testUtils.assertTrue(helper.contains(document, element), "Dom element was expected to be in the document");
+
+        var unattachedElement = document.createElement("div");
+        testUtils.assertFalse(helper.contains(document, unattachedElement), "Dom element was expected to not be in the document");
     }
 })

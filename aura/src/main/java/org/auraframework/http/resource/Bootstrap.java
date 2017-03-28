@@ -22,7 +22,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Map;
 
-import javax.inject.Inject;
+import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
@@ -33,7 +33,6 @@ import org.auraframework.def.DefDescriptor;
 import org.auraframework.def.DefDescriptor.DefType;
 import org.auraframework.def.Definition;
 import org.auraframework.instance.Instance;
-import org.auraframework.service.ContextService;
 import org.auraframework.system.AuraContext;
 import org.auraframework.system.AuraContext.Format;
 import org.auraframework.throwable.AuraJWTError;
@@ -46,8 +45,6 @@ import org.auraframework.util.json.JsonSerializationContext;
  */
 @ServiceComponent
 public class Bootstrap extends AuraResourceImpl {
-
-    private ContextService contextService;
 
     public Bootstrap() {
         super("bootstrap.js", Format.JS);
@@ -107,17 +104,17 @@ public class Bootstrap extends AuraResourceImpl {
         DefType type = app.getDefType();
 
         try {
-            DefDescriptor<?> desc = definitionService.getDefDescriptor(app.getDescriptorName(), type.getPrimaryInterface());
-
+            DefDescriptor<?> desc = definitionService.getDefDescriptor(app.getDescriptorName(),
+                    type.getPrimaryInterface());
             servletUtilAdapter.checkFrameworkUID(context);
 
-            if (!configAdapter.validateBootstrap(request.getParameter("jwt"))) {
-                // If jwt validation fails, just write error to client. Do not gack.
+            // need to guard bootstrap.js request because it returns user sensitive information.
+            String jwtToken = request.getParameter("jwt");
+            if (!configAdapter.validateBootstrap(jwtToken)) {
                 throw new AuraJWTError("Invalid jwt parameter");
             }
 
             setCacheHeaders(response, app);
-
             Instance<?> appInstance = instanceService.getInstance(desc, getComponentAttributes(request));
             definitionService.updateLoaded(desc);
             loadLabels();
@@ -135,15 +132,29 @@ public class Bootstrap extends AuraResourceImpl {
             json.writeMapEnd();
             json.writeMapEntry("md5", out.getMD5());
             json.writeMapEntry("context", context);
+
+            // CSRF token is usually handled in inline.js, but in the few cases
+            // where inline.js may be cached, bootstrap may need to be able to
+            // return a current token.
+            if (manifestUtil.isManifestEnabled()) {
+                json.writeMapEntry("token", configAdapter.getCSRFToken());
+            }
+
             json.writeMapEnd();
             out.append(APPEND_JS);
         } catch (Throwable t) {
-            Throwable handled = t;
-            if (!(t instanceof AuraJWTError)) {
-                handled = exceptionAdapter.handleException(t);
+            if (t instanceof AuraJWTError) {
+                // If jwt validation fails, just 404. Do not gack.
+                try {
+                    servletUtilAdapter.send404(request.getServletContext(), request, response);
+                } catch (ServletException e) {
+                    // ignore
+                }
+            } else {
+                t = exceptionAdapter.handleException(t);
+                writeError(t, response, context);
+                exceptionAdapter.handleException(new AuraResourceException(getName(), response.getStatus(), t));
             }
-            writeError(handled, response, context);
-            exceptionAdapter.handleException(new AuraResourceException(getName(), response.getStatus(), t));
         }
     }
 
@@ -197,24 +208,9 @@ public class Bootstrap extends AuraResourceImpl {
         out.print(PREPEND_JS);
         JsonEncoder json = JsonEncoder.createJsonStream(out, context.getJsonSerializationContext());
         json.writeMapBegin();
-
-        if (t instanceof AuraJWTError) {
-            json.writeMapEntry("errorType", "jwt");
-        }
-
         json.writeMapEntry("error", t);
         json.writeMapEnd();
         out.print(APPEND_JS);
-    }
-
-    /**
-     * Injection override.
-     *
-     * @param contextService the ContextService to set
-     */
-    @Inject
-    public void setContextService(ContextService contextService) {
-        this.contextService = contextService;
     }
 
 }

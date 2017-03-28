@@ -161,18 +161,15 @@ Aura.Utils.Util.prototype.isIOSWebView = function() {
  * @private
  */
 Aura.Utils.Util.prototype.globalEval = function(src, globals, optionalSourceURL) {
-    // Ignoring IE for now until we figure how to make it work under weird conditions in SFX.
-    if (window["$$safe-eval-compat$$"] && !Aura.Utils.Util.prototype.isIE) {
-        return window["$$safe-eval-compat$$"](src, optionalSourceURL || "", false, window, globals);
+    var srcToEval = "var r = " + src + "; return r;";
+    if (window["$$safe-eval-compat$$"]) {
+        //For perf, disable pre-processing step and assume that src passed returns a value
+        return window["$$safe-eval-compat$$"](srcToEval, optionalSourceURL, true, window, globals);
     }
 
     // --- backward compatibility ---
-    // If the worker is not ready, we have to fallback to the old mechanism of evaluation.
-    // This is mostly due to `$A.initConfig()` calls on AuraElement from Aloha and VF, which is due to be removed.
-    // The protection mechanism here is that if CSP is in place, and the worker is not, the evaluation will be prevented,
-    // but if CSP is off, and the worker was initialized, the system still behaves.
-    // This block can be removed as part of that work is described here: @W-2900324
-
+    // If eval is allowed by the browser (e.g. IE11, AIS, LO), we don't load safeEvalWorker. In such cases we fallback
+    // to the old mechanism of evaluation.
     // This evaluation occurs in the global scope and with the extra globals visible but not defined there.
     var keys = [];
     var vals = [];
@@ -186,7 +183,7 @@ Aura.Utils.Util.prototype.globalEval = function(src, globals, optionalSourceURL)
         sourceURL = '\n//# sourceURL=' + optionalSourceURL;
     }
 
-    return new Function(keys, "var a = " + src + "; return a;" + sourceURL).apply({}, vals);
+    return new Function(keys, srcToEval + sourceURL).apply({}, vals);
 };
 
 /**
@@ -839,6 +836,11 @@ Aura.Utils.Util.prototype.createElementsFromMarkup=function(markup){
  */
  Aura.Utils.Util.prototype.insertFirst = function(newEl, referenceEl){
     if (this.isArray(newEl)) {
+        // Don't create a fragment for just one item.
+        if(newEl.length === 1) {
+            this.insertFirst(newEl[0], referenceEl);
+            return;
+        }
         var frag = document.createDocumentFragment();
         this.appendChild(newEl, frag);
         this.insertFirst(frag, referenceEl);
@@ -847,8 +849,7 @@ Aura.Utils.Util.prototype.createElementsFromMarkup=function(markup){
     var firstChild = referenceEl.firstChild;
     if (firstChild) {
         referenceEl.insertBefore(newEl, firstChild);
-    }
-    else {
+    } else {
         referenceEl.appendChild(newEl);
     }
 };
@@ -864,6 +865,10 @@ Aura.Utils.Util.prototype.createElementsFromMarkup=function(markup){
  */
 Aura.Utils.Util.prototype.insertBefore = function(newEl, referenceEl) {
     if (this.isArray(newEl)) {
+        if(newEl.length === 1) {
+            this.insertBefore(newEl[0], referenceEl);
+            return;
+        }
         var frag = document.createDocumentFragment();
         this.appendChild(newEl, frag);
         this.insertBefore(frag, referenceEl);
@@ -887,6 +892,10 @@ Aura.Utils.Util.prototype.insertBefore = function(newEl, referenceEl) {
  */
 Aura.Utils.Util.prototype.insertAfter = function(newEl, referenceEl) {
     if (this.isArray(newEl)) {
+        if(newEl.length === 1) {
+            this.insertAfter(newEl[0], referenceEl);
+            return;
+        }
         var frag = document.createDocumentFragment();
         this.appendChild(newEl, frag);
         this.insertAfter(frag, referenceEl);
@@ -918,6 +927,10 @@ Aura.Utils.Util.prototype.appendChild = function(newEl, referenceEl) {
         return;
     }
     if (this.isArray(newEl)) {
+        if(newEl.length === 1) {
+            referenceEl.appendChild(newEl[0]);
+            return;
+        }
         var frag = document.createDocumentFragment();
         var len = newEl.length;
         for(var i=0;i<len;i++){
@@ -968,7 +981,6 @@ Aura.Utils.Util.prototype.removeElement = function(element) {
                 $A.assert(this.isUndefined(element["aura_deleted"]), "Element was reused after delete");
                 element["aura_deleted"] = true;
             }
-
             this.trashcan.appendChild(element);
         } else{
             this.trash.push(element);
@@ -1553,6 +1565,19 @@ Aura.Utils.Util.prototype.hyphensToCamelCase = function(str) {
     }
 
     return str.replace(/-([a-z])/gi, hyphensToCamelCaseHelper);
+};
+
+/**
+*  Converts words to camelCase, strips non-alphanumeric characters
+*
+* */
+Aura.Utils.Util.prototype.toCamelCase=function(str) {
+    return str.replace(/(?:^\w|[A-Z]|\b\w|\s+|[^\w]+)/g, function (match, index) {
+        if (/\s+|[^\w]+/.test(match)){
+            return "";
+        }
+        return index === 0 ? match.toLowerCase() : match.toUpperCase();
+    });
 };
 
 /**
@@ -2244,6 +2269,17 @@ Aura.Utils.Util.prototype.isExpression = function (obj) {
 };
 
 /**
+ * Checks if the object is an Aura Action.
+ *
+ * @param {Object} obj The object to check for.
+ * @returns {Boolean} True if the object type is a controller action, or false otherwise.
+ * @private
+ */
+Aura.Utils.Util.prototype.isAction = function(obj) {
+    return obj instanceof Action;
+};
+
+/**
  * Checks if the object is an Aura value object.
  *
  * @param {Object} obj The object to check for.
@@ -2362,6 +2398,25 @@ Aura.Utils.Util.prototype.postMessage = function(targetWindow, argsArray){
 	if(targetWindow && targetWindow["postMessage"]){
 		targetWindow["postMessage"].apply(targetWindow, argsArray);
 	}
+};
+
+/**
+ * Get a string representation of component hierarchy by calling getOwner and walk up the component tree. 
+ * @param {component} leaf component to walk up the hierarchy
+ * @private
+ */
+Aura.Utils.Util.prototype.getComponentHierarchy = function(component){
+    if (!component) {
+        return '';
+    }
+    var ret = ['['+component.getType()+']'];
+    var owner = component.getOwner();
+    while (owner !== owner.getOwner()) {
+        ret.push('['+owner.getType()+']');
+        owner = owner.getOwner();
+    }
+    ret.push('['+owner.getType()+']');
+    return ret.reverse().join('>');
 };
 
 //#if {"excludeModes" : ["PRODUCTION", "PRODUCTIONDEBUG"]}

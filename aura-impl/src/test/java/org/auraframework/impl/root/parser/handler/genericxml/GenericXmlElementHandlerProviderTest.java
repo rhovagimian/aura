@@ -21,9 +21,9 @@ import org.auraframework.def.genericxml.GenericXmlCapableDef;
 import org.auraframework.def.genericxml.GenericXmlElement;
 import org.auraframework.def.genericxml.RootLevelGenericXmlValidator;
 import org.auraframework.impl.AuraImplTestCase;
-import org.auraframework.impl.root.parser.XMLParser;
+import org.auraframework.impl.factory.XMLParser;
+import org.auraframework.impl.source.StringSource;
 import org.auraframework.system.Parser;
-import org.auraframework.test.source.StringSource;
 import org.junit.Test;
 
 import javax.annotation.Nonnull;
@@ -122,7 +122,7 @@ public class GenericXmlElementHandlerProviderTest extends AuraImplTestCase {
 
         @Nonnull
         @Override
-        public Set<GenericXmlElement> getGenericTags(Class implementingDef) {
+        public Set<GenericXmlElement> getGenericTags(@SuppressWarnings("rawtypes") Class implementingDef) {
             return null;
         }
     }
@@ -137,7 +137,7 @@ public class GenericXmlElementHandlerProviderTest extends AuraImplTestCase {
 
         @Nonnull
         @Override
-        public Set<GenericXmlElement> getGenericTags(Class implementingDef) {
+        public Set<GenericXmlElement> getGenericTags(@SuppressWarnings("rawtypes") Class implementingDef) {
             return null;
         }
     }

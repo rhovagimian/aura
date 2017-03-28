@@ -16,10 +16,9 @@
 
 -->
 <aura:application abstract="true" extensible="true" locationChangeEvent="aura:locationChange"
-         template="aura:template" renderer="js://aura.component, java://org.auraframework.renderer.ComponentRenderer"
+         template="aura:template" renderer="js://aura.application, java://org.auraframework.renderer.ComponentRenderer"
          access="UNAUTHENTICATED" implements="aura:rootComponent" support="GA" useAppcache="false" description="The root of the application hierarchy.">
     <aura:attribute name="body" access="GLOBAL" type="Aura.Component[]" description="The components to render within this application."/>
 
-    <aura:clientLibrary name="Walltime" type="JS" />
     <aura:clientLibrary name="CkEditor" type="JS" />
 </aura:application>

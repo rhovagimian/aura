@@ -15,34 +15,31 @@
  */
 package org.auraframework.integration.test.def;
 
-import static org.hamcrest.CoreMatchers.containsString;
-import static org.junit.Assert.assertThat;
+import java.util.Set;
 
-import com.google.common.collect.Sets;
+import javax.inject.Inject;
+
 import org.auraframework.def.ApplicationDef;
 import org.auraframework.def.ControllerDef;
 import org.auraframework.def.DefDescriptor;
 import org.auraframework.def.TokensDef;
-import org.auraframework.impl.parser.ParserFactory;
 import org.auraframework.impl.root.component.BaseComponentDefTest;
+import org.auraframework.service.CompilerService;
 import org.auraframework.service.DefinitionService;
-import org.auraframework.system.Parser;
-import org.auraframework.system.Parser.Format;
 import org.auraframework.system.Source;
 import org.auraframework.throwable.quickfix.DefinitionNotFoundException;
 import org.auraframework.throwable.quickfix.InvalidDefinitionException;
 import org.auraframework.throwable.quickfix.QuickFixException;
 import org.junit.Test;
 
-import javax.inject.Inject;
-import java.util.Set;
+import com.google.common.collect.Sets;
 
 public class ApplicationDefTest extends BaseComponentDefTest<ApplicationDef> {
     @Inject
     DefinitionService definitionService;
 
     @Inject
-    protected ParserFactory parserFactory;
+    protected CompilerService compilerService;
 
     public ApplicationDefTest() {
         super(ApplicationDef.class, "aura:application");
@@ -182,7 +179,7 @@ public class ApplicationDefTest extends BaseComponentDefTest<ApplicationDef> {
     }
 
     @Test
-    public void testValidateReferencesValidateJsCodeWhenMinifyIsTrue() throws Exception {
+    public void testValidateDefinitionValidateJsCode() throws Exception {
         DefDescriptor<ApplicationDef> appDesc = addSourceAutoCleanup(
                 ApplicationDef.class, "<aura:application></aura:application>");
         DefDescriptor<ControllerDef> controllerDesc = definitionService.getDefDescriptor(appDesc,
@@ -192,62 +189,14 @@ public class ApplicationDefTest extends BaseComponentDefTest<ApplicationDef> {
         addSourceAutoCleanup(controllerDesc, controllerCode);
 
         Source<ApplicationDef> source = stringSourceLoader.getSource(appDesc);
-        Parser<ApplicationDef> parser = parserFactory.getParser(Format.XML, appDesc);
-        ApplicationDef appDef = parser.parse(appDesc, source);
 
         try {
-            appDef.validateReferences(true);
+            compilerService.compile(appDesc, source);
             fail("Expecting an InvalidDefinitionException");
         } catch(Exception e) {
             String expectedMsg = String.format("JS Processing Error: %s", appDesc.getQualifiedName());
             this.assertExceptionMessageContains(e, InvalidDefinitionException.class, expectedMsg);
         }
-    }
-
-    @Test
-    public void testValidateReferencesNotValidateJsCodeWhenMinifyIsFalse() throws Exception {
-        DefDescriptor<ApplicationDef> appDesc = addSourceAutoCleanup(
-                ApplicationDef.class, "<aura:application></aura:application>");
-        DefDescriptor<ControllerDef> controllerDesc = definitionService.getDefDescriptor(appDesc,
-                DefDescriptor.JAVASCRIPT_PREFIX, ControllerDef.class);
-
-        String controllerCode = "({ function1: function(cmp) {var a = {k:}} })";
-        addSourceAutoCleanup(controllerDesc, controllerCode);
-
-        Source<ApplicationDef> source = stringSourceLoader.getSource(appDesc);
-        Parser<ApplicationDef> parser = parserFactory.getParser(Format.XML, appDesc);
-        ApplicationDef appDef = parser.parse(appDesc, source);
-
-        try {
-            appDef.validateReferences(false);
-        } catch(Exception e) {
-            fail("Unexpected exception is thrown: " + e.toString());
-        }
-    }
-
-    /**
-     * Verify that when javascriptClass gets initiated in getCode(), getCode() doesn't validate Js code,
-     * even if when minify is true. Because we enforce javascriptClass not to compile Js code when javascriptClass
-     * is initiated in getCode().
-     */
-    @Test
-    public void testGetCodeNotValidateJsCodeWhenMinifyIsTrue() throws Exception {
-        DefDescriptor<ApplicationDef> appDesc = addSourceAutoCleanup(
-                ApplicationDef.class, "<aura:application></aura:application>");
-        DefDescriptor<ControllerDef> controllerDesc = definitionService.getDefDescriptor(appDesc,
-                DefDescriptor.JAVASCRIPT_PREFIX, ControllerDef.class);
-
-        String controllerCode = "({ function1: function(cmp) {var a = {k:}} })";
-        addSourceAutoCleanup(controllerDesc, controllerCode);
-
-        Source<ApplicationDef> source = stringSourceLoader.getSource(appDesc);
-        Parser<ApplicationDef> parser = parserFactory.getParser(Format.XML, appDesc);
-        ApplicationDef appDef = parser.parse(appDesc, source);
-
-        String actual = appDef.getCode(true);
-
-        String expected = "\"controller\":{\n    \"function1\":function(cmp) {var a = {k:}}\n  }";
-        assertThat(actual, containsString(expected));
     }
 
     /**

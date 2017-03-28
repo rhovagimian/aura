@@ -45,6 +45,7 @@ import org.auraframework.def.IncludeDefRef;
 import org.auraframework.def.LibraryDef;
 import org.auraframework.def.SVGDef;
 import org.auraframework.def.StyleDef;
+import org.auraframework.def.module.ModuleDef;
 import org.auraframework.http.ManifestUtil;
 import org.auraframework.impl.util.TemplateUtil;
 import org.auraframework.instance.Action;
@@ -358,18 +359,17 @@ public class ServerServiceImpl implements ServerService {
         final String mKey = minify ? "MIN:" : "DEV:";
         final String uid = context.getUid(appDesc);
         final String lockerServiceCacheBuster  = configAdapter.getLockerServiceCacheBuster();
-        final String key = "JS:" + mKey + uid + ":" + lockerServiceCacheBuster;
+        // modules definitions will be present with modules enabled so needs to be cached separately
+        final String modules = context.isModulesEnabled() ? ":m" : "";
+        final String key = "JS:" + mKey + uid + ":" + lockerServiceCacheBuster + modules;
                 
         String cached = getAltCachedString(uid, appDesc, key,
-               new Callable<String>() {
-                   @Override
-                   public String call() throws Exception {
-                       String res = getDefinitionsString(dependencies, key);
-                       //log the cache miss here
-                       cachingService.getAltStringsCache().logCacheStatus("cache miss for key: "+key+";");
-                       return res;
-                   }
-               });
+                () -> {
+                    String res = getDefinitionsString(dependencies, key);
+                    //log the cache miss here
+                    cachingService.getAltStringsCache().logCacheStatus("cache miss for key: "+key+";");
+                    return res;
+                });
 
         if (out != null) {
            out.append(cached);
@@ -393,9 +393,9 @@ public class ServerServiceImpl implements ServerService {
         for (LibraryDef libraryDef : libraryDefs) {
             List<IncludeDefRef> includeDefs = libraryDef.getIncludes();
             for (IncludeDefRef defRef : includeDefs) {
-            	sb.append("$A.componentService.addLibraryExporter(\"" + defRef.getClientDescriptor() + "\", function (){/*");
+            	sb.append("$A.componentService.addLibraryExporter(\"" + defRef.getClientDescriptor() + "\", (function (){/*");
                 sb.append(defRef.getCode(minify));
-                sb.append("*/});");
+                sb.append("*/}));");
                 	
                 context.setClientClassLoaded(defRef.getDescriptor(), true);
             }
@@ -404,7 +404,7 @@ public class ServerServiceImpl implements ServerService {
         // Append component classes.
         Collection<BaseComponentDef> componentDefs = filterAndLoad(BaseComponentDef.class, dependencies, null);
         for (BaseComponentDef def : componentDefs) {
-            sb.append("$A.componentService.addComponent(\"" + def.getDescriptor() + "\", function (){/*");
+            sb.append("$A.componentService.addComponent(\"" + def.getDescriptor() + "\", (function (){/*");
             
             	// Mark class as loaded in the client
             	context.setClientClassLoaded(def.getDescriptor(), true);
@@ -417,7 +417,7 @@ public class ServerServiceImpl implements ServerService {
             	serializationService.write(def, null, BaseComponentDef.class, sb, "JSON");
             	sb.append(";");
 
-            sb.append("*/});\n");
+            sb.append("*/}));\n");
         }
 
         // Append event definitions
@@ -439,6 +439,14 @@ public class ServerServiceImpl implements ServerService {
         Collection<ControllerDef> controllers = filterAndLoad(ControllerDef.class, dependencies, ACF);
         serializationService.writeCollection(controllers, ControllerDef.class, sb, "JSON");
         sb.append(");\n");
+
+        if (context.isModulesEnabled()) { // Prevents caching of module defs when modules are disabled.
+            // modules
+            sb.append("$A.componentService.initModuleDefs(");
+            Collection<ModuleDef> modules = filterAndLoad(ModuleDef.class, dependencies, null);
+            serializationService.writeCollection(modules, ModuleDef.class, sb, "JSON");
+            sb.append(");\n");
+        }
 
         return sb.toString();
     }
@@ -512,7 +520,7 @@ public class ServerServiceImpl implements ServerService {
     /**
      * Get a named string from the cache for a cacheable definition.
      *
-     * @param uid the UID for the definition (must have called {@link #getUid(String, DefDescriptor<?>)}).
+     * @param uid the UID for the definition (must have called {@link DefinitionService#getUid(String, DefDescriptor)}).
      * @param descriptor the descriptor.
      * @param key the key.
      * @param loader the loader for the string
@@ -527,7 +535,7 @@ public class ServerServiceImpl implements ServerService {
     /**
      * Get a named string from the alternate cache for a cacheable definition.
      *
-     * @param uid the UID for the definition (must have called {@link #getUid(String, DefDescriptor<?>)}).
+     * @param uid the UID for the definition (must have called {@link DefinitionService#getUid(String, DefDescriptor)}).
      * @param descriptor the descriptor.
      * @param key the key.
      * @param loader the loader for the string
@@ -595,9 +603,9 @@ public class ServerServiceImpl implements ServerService {
         attributes.put("auraStyleTags", sb.toString());
         sb.setLength(0);
         
-        DefDescriptor<StyleDef> styleDefDesc = templateDef.getStyleDescriptor();
-        if (styleDefDesc != null) {
-            attributes.put("auraInlineStyle", definitionService.getDefinition(styleDefDesc).getCode());
+        StyleDef styleDef = templateDef.getStyleDef();
+        if (styleDef != null) {
+            attributes.put("auraInlineStyle", styleDef.getCode());
         }
         
         if (mode.allowLocalRendering() && value.isLocallyRenderable()) {
@@ -630,7 +638,11 @@ public class ServerServiceImpl implements ServerService {
             auraInit.put("deftype", value.getDescriptor().getDefType());
             auraInit.put("host", context.getContextPath());
             auraInit.put("pathPrefix", context.getPathPrefix());
-            auraInit.put("token", configAdapter.getCSRFToken());
+            
+            // appcached apps must receive the token via bootstrap to avoid caching of the token
+        	if (!manifestUtil.isManifestEnabled()) {
+        		auraInit.put("token", configAdapter.getCSRFToken());
+        	}
             
             String lockerWorkerURL = configAdapter.getLockerWorkerURL();
             if (lockerWorkerURL != null) {

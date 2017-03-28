@@ -16,20 +16,20 @@
 
 package org.auraframework.integration.test.javascript.parser;
 
+import static org.hamcrest.CoreMatchers.instanceOf;
+import static org.junit.Assert.assertThat;
+
+import javax.inject.Inject;
+
 import org.auraframework.def.DefDescriptor;
 import org.auraframework.def.HelperDef;
 import org.auraframework.impl.AuraImplTestCase;
 import org.auraframework.impl.javascript.helper.JavascriptHelperDef;
-import org.auraframework.impl.javascript.parser.JavascriptHelperParser;
-import org.auraframework.system.Source;
+import org.auraframework.impl.factory.JavascriptHelperParser;
+import org.auraframework.system.TextSource;
 import org.auraframework.test.source.StringSourceLoader;
 import org.auraframework.throwable.quickfix.InvalidDefinitionException;
 import org.junit.Test;
-
-import javax.inject.Inject;
-
-import static org.hamcrest.CoreMatchers.instanceOf;
-import static org.junit.Assert.assertThat;
 
 public class JavascriptHelperParserTest extends AuraImplTestCase {
     @Inject
@@ -50,9 +50,9 @@ public class JavascriptHelperParserTest extends AuraImplTestCase {
             "    }\n" +
             "})";
         DefDescriptor<HelperDef> helperDesc = addSourceAutoCleanup(HelperDef.class, helperJs);
-        Source<HelperDef> source = loader.getSource(helperDesc);
+        TextSource<HelperDef> source = (TextSource<HelperDef>)loader.getSource(helperDesc);
 
-        HelperDef helperDef = new JavascriptHelperParser().parse(helperDesc, source);
+        HelperDef helperDef = new JavascriptHelperParser().getDefinition(helperDesc, source);
 
         assertThat(helperDef, instanceOf(JavascriptHelperDef.class));
         helperDef.validateDefinition();
@@ -76,9 +76,9 @@ public class JavascriptHelperParserTest extends AuraImplTestCase {
             "    }\n" +
             "})";
         DefDescriptor<HelperDef> helperDesc = addSourceAutoCleanup(HelperDef.class, helperJs);
-        Source<HelperDef> source = loader.getSource(helperDesc);
+        TextSource<HelperDef> source = (TextSource<HelperDef>)loader.getSource(helperDesc);
 
-        HelperDef helperDef = new JavascriptHelperParser().parse(helperDesc, source);
+        HelperDef helperDef = new JavascriptHelperParser().getDefinition(helperDesc, source);
 
         assertThat(helperDef, instanceOf(JavascriptHelperDef.class));
         helperDef.validateDefinition();
@@ -95,9 +95,9 @@ public class JavascriptHelperParserTest extends AuraImplTestCase {
                 "    function1: function(cmp) {var v = 2;}\n" +
                 "})";
         DefDescriptor<HelperDef> helperDesc = addSourceAutoCleanup(HelperDef.class, helperJs);
-        Source<HelperDef> source = loader.getSource(helperDesc);
+        TextSource<HelperDef> source = (TextSource<HelperDef>)loader.getSource(helperDesc);
 
-        HelperDef helperDef = new JavascriptHelperParser().parse(helperDesc, source);
+        HelperDef helperDef = new JavascriptHelperParser().getDefinition(helperDesc, source);
 
         assertThat(helperDef, instanceOf(JavascriptHelperDef.class));
         helperDef.validateDefinition();
@@ -113,9 +113,9 @@ public class JavascriptHelperParserTest extends AuraImplTestCase {
                 "    foo: 'do NOthing'\n"+
                 "})";
         DefDescriptor<HelperDef> helperDesc = addSourceAutoCleanup(HelperDef.class, helperJs);
-        Source<HelperDef> source = loader.getSource(helperDesc);
+        TextSource<HelperDef> source = (TextSource<HelperDef>)loader.getSource(helperDesc);
 
-        HelperDef helperDef = new JavascriptHelperParser().parse(helperDesc, source);
+        HelperDef helperDef = new JavascriptHelperParser().getDefinition(helperDesc, source);
         
         assertThat(helperDef, instanceOf(JavascriptHelperDef.class));
         helperDef.validateDefinition();
@@ -135,9 +135,9 @@ public class JavascriptHelperParserTest extends AuraImplTestCase {
                 "    var global = 'Do everything';\n"+
                 "})";
         DefDescriptor<HelperDef> helperDesc = addSourceAutoCleanup(HelperDef.class, helperJs);
-        Source<HelperDef> source = loader.getSource(helperDesc);
+        TextSource<HelperDef> source = (TextSource<HelperDef>)loader.getSource(helperDesc);
 
-        HelperDef helperDef = new JavascriptHelperParser().parse(helperDesc, source);
+        HelperDef helperDef = new JavascriptHelperParser().getDefinition(helperDesc, source);
         try {
             helperDef.validateDefinition();
             fail("InvalidDefinitionException should be thrown.");

@@ -27,7 +27,6 @@ import org.auraframework.system.DefRegistry;
 import org.auraframework.util.resource.ResourceLoader;
 
 public interface ConfigAdapter extends AuraAdapter {
-
     boolean isTestAllowed();
 
     boolean isProduction();
@@ -63,8 +62,16 @@ public interface ConfigAdapter extends AuraAdapter {
 
     boolean validateCss();
 
-    String getAvailableTimezone(String timezone);
+    /**
+     * SessionCacheKey is a key that is used for caches that are based typically per customer basis. 
+     * if this returns null, it mean that caches that uses this key will not be active.
+     * 
+     * @return a String, may be null
+     */
+    String getSessionCacheKey();
 
+    // TODO: This shouldn't be a API of config adapter.
+    // check reference. Remove it if not needed.
     /**
      * Timezone from current context or GMT
      * @return timezone
@@ -98,13 +105,15 @@ public interface ConfigAdapter extends AuraAdapter {
 
     /**
      * Validate the app.encryptionkey request
-     * @return true if the request has a valid ssid.
+     * 
+     * @return true if the request has a valid jwt token.
      */
     boolean validateGetEncryptionKey(String ssid);
 
     /**
-     * Validate the bootstrap.js request
-     * @return true if the request has a valid ssid.
+     * Validate the inline.js request
+     * 
+     * @return true if the request has a valid jwt token.
      */
     boolean validateBootstrap(String ssid);
 
@@ -179,4 +188,21 @@ public interface ConfigAdapter extends AuraAdapter {
      * @return whether to use one XHR to send each action (use with HTTP/2 only)
      */
     boolean getXHRExclusivity();
+
+    /**
+     * @return whether modules is enabled through configuration
+     */
+    boolean isModulesEnabled();
+
+    /**
+     * @return Set of registered module namespaces
+     */
+    Set<String> getModuleNamespaces();
+
+    /**
+     * @param namespaces module namespaces
+     */
+    void addModuleNamespaces(Set<String> namespaces);
+    
+    boolean cdnEnabled();
 }

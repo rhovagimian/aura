@@ -36,7 +36,7 @@ Test.Tools.Aura.Stubs.Aura=new function(){
             setCallback:function(scope,callback,name){this.callback=callback;},
             setParams:function(params){this.params=params;},
             toJSON:function(){return {id:this.id,descriptor:{},params:this.params}}
-        },{callback:callback||null,params:params||{},returnValue:returnValue||{},state:state||{}});
+        },{callback:callback||null,params:params||{},returnValue:returnValue,state:state||{}});
     };
 
     this.GetController=function(target){
@@ -95,7 +95,8 @@ Test.Tools.Aura.Stubs.Aura=new function(){
             releaseCurrentAccess: function(){},
             joinComponentConfigs : function() {},
             finishComponentConfigs : function() {},
-            getNum : function() { return 0; }
+            getNum : function() { return 0; },
+            getAccessStackHierarchy: function() {}
         });
     };
 };

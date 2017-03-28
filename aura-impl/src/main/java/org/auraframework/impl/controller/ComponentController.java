@@ -21,6 +21,7 @@ import java.util.Map;
 
 import javax.inject.Inject;
 
+import org.auraframework.adapter.ConfigAdapter;
 import org.auraframework.adapter.ExceptionAdapter;
 import org.auraframework.annotations.Annotations.ServiceComponent;
 import org.auraframework.def.ActionDef;
@@ -31,6 +32,7 @@ import org.auraframework.def.DefDescriptor;
 import org.auraframework.def.Definition;
 import org.auraframework.def.EventDef;
 import org.auraframework.def.RootDefinition;
+import org.auraframework.def.module.ModuleDef;
 import org.auraframework.ds.servicecomponent.Controller;
 import org.auraframework.impl.java.controller.JavaAction;
 import org.auraframework.impl.javascript.controller.JavascriptPseudoAction;
@@ -40,6 +42,7 @@ import org.auraframework.instance.Action;
 import org.auraframework.instance.Application;
 import org.auraframework.instance.BaseComponent;
 import org.auraframework.instance.Component;
+import org.auraframework.instance.Instance;
 import org.auraframework.service.ContextService;
 import org.auraframework.service.DefinitionService;
 import org.auraframework.service.InstanceService;
@@ -57,6 +60,7 @@ public class ComponentController implements Controller {
     private ExceptionAdapter exceptionAdapter;
     private DefinitionService definitionService;
     private ContextService contextService;
+    private ConfigAdapter configAdapter;
 
     /**
      * A Java exception representing a <em>Javascript</em> error condition, as
@@ -74,8 +78,9 @@ public class ComponentController implements Controller {
         private String namespace;
         private String componentName;
         private String methodName;
+        private String cmpStack;
 
-        public AuraClientException(String desc, String id, String message, String jsStack,
+        public AuraClientException(String desc, String id, String message, String jsStack, String cmpStack,
                                    InstanceService instanceService, ExceptionAdapter exceptionAdapter) {
             super(message);
             Action action = null;
@@ -102,7 +107,7 @@ public class ComponentController implements Controller {
             }
 
             if (this.causeDescriptor != null && !this.causeDescriptor.isEmpty()) {
-                // "markup://foo:bar" or "InvalidComponent markup://foo:bar {10:149;a}"
+                // "markup://foo:bar"
                 int markupIndex = this.causeDescriptor.indexOf("markup://");
                 if (markupIndex > -1) {
                     String markup = this.causeDescriptor.substring(markupIndex).split(" ")[0];
@@ -121,7 +126,7 @@ public class ComponentController implements Controller {
             }
 
             // parsing stacktrace to figure out whether the error is from external script 
-            if (jsStack != null && !jsStack.isEmpty()) {
+            if (this.componentName == null && jsStack != null && !jsStack.isEmpty()) {
                 String[] traces = jsStack.split("\n");
                 for (String trace : traces) {
                     // extract filename
@@ -142,6 +147,7 @@ public class ComponentController implements Controller {
 
             this.action = action;
             this.jsStack = jsStack;
+            this.cmpStack = cmpStack;
         }
 
         public Action getOriginalAction() {
@@ -150,6 +156,10 @@ public class ComponentController implements Controller {
 
         public String getClientStack() {
             return jsStack;
+        }
+
+        public String getComponentStack() {
+            return cmpStack;
         }
 
         public String getCauseDescriptor() {
@@ -180,6 +190,8 @@ public class ComponentController implements Controller {
                 trace = trace.replaceAll("https?://([^/]*/)+", "");
                 // remove line and column number
                 trace = trace.replaceAll(":[0-9]+:[0-9]+", "");
+                // remove trailing part of filename
+                trace = trace.replaceAll("[.]js.+$", ".js");
                 sb.append(trace+'\n');
             }
             return sb.toString();
@@ -217,14 +229,20 @@ public class ComponentController implements Controller {
 
     // Not aura enabled, but called from code. This is probably bad practice.
     public Component getComponent(String name, Map<String, Object> attributes) throws QuickFixException {
-        return  getBaseComponent(Component.class, ComponentDef.class, name, attributes, false);
+        return getBaseComponent(Component.class, ComponentDef.class, name, attributes, false);
     }
 
     @AuraEnabled
-    public Component getComponent(@Key(value = "name", loggable = true) String name,
-                                  @Key("attributes") Map<String, Object> attributes,
-                                  @Key(value = "chainLoadLabels", loggable = true) Boolean loadLabels) throws QuickFixException {
-        return  getBaseComponent(Component.class, ComponentDef.class, name, attributes, loadLabels);
+    public Instance getComponent(@Key(value = "name", loggable = true) String name,
+                                 @Key("attributes") Map<String, Object> attributes,
+                                 @Key(value = "chainLoadLabels", loggable = true) Boolean loadLabels) throws QuickFixException {
+        DefDescriptor<ModuleDef> moduleDesc = definitionService.getDefDescriptor(name, ModuleDef.class);
+        if (contextService.getCurrentContext().isModulesEnabled() &&
+                configAdapter.getModuleNamespaces().contains(moduleDesc.getNamespace()) && moduleDesc.exists()) {
+            definitionService.updateLoaded(moduleDesc);
+            return instanceService.getInstance(moduleDesc, attributes);
+        }
+        return getBaseComponent(Component.class, ComponentDef.class, name, attributes, loadLabels);
     }
 
     @AuraEnabled
@@ -244,12 +262,14 @@ public class ComponentController implements Controller {
      * @param stack Not always available (it's browser dependent), but if present, a browser-dependent
      *      string describing the Javascript stack for the error.  Some frames may be obfuscated,
      *      anonymous, omitted after inlining, etc., but it may help diagnosis.
+     * @param componentStack Not always available (it's context dependent), but if present, a
+     *      string describing the component hierarchy stack for the error.
      */
     @AuraEnabled
     public void reportFailedAction(@Key(value = "failedAction") String desc, @Key("failedId") String id,
-                                   @Key("clientError") String error, @Key("clientStack") String stack) {
+                                   @Key("clientError") String error, @Key("clientStack") String stack, @Key("componentStack") String componentStack) {
         // Error reporting (of errors in prior client-side actions) are handled specially
-        AuraClientException ace = new AuraClientException(desc, id, error, stack, instanceService, exceptionAdapter);
+        AuraClientException ace = new AuraClientException(desc, id, error, stack, componentStack, instanceService, exceptionAdapter);
         exceptionAdapter.handleException(ace, ace.getOriginalAction());
     }
 
@@ -289,15 +309,15 @@ public class ComponentController implements Controller {
     }
 
     @AuraEnabled
-    public List<Component> getComponents(@Key("components") List<Map<String, Object>> components)
+    public List<Instance> getComponents(@Key("components") List<Map<String, Object>> components)
             throws QuickFixException {
-        List<Component> ret = Lists.newArrayList();
+        List<Instance> ret = Lists.newArrayList();
         for (int i = 0; i < components.size(); i++) {
             Map<String, Object> cmp = components.get(i);
             String descriptor = (String)cmp.get("descriptor");
             @SuppressWarnings("unchecked")
             Map<String, Object> attributes = (Map<String, Object>) cmp.get("attributes");
-            ret.add(getBaseComponent(Component.class, ComponentDef.class, descriptor, attributes, Boolean.FALSE));
+            ret.add(getComponent(descriptor, attributes, Boolean.FALSE));
         }
         return ret;
     }
@@ -320,5 +340,10 @@ public class ComponentController implements Controller {
     @Inject
     public void setContextService(ContextService contextService) {
         this.contextService = contextService;
+    }
+
+    @Inject
+    public void setConfigAdapter(ConfigAdapter configAdapter) {
+        this.configAdapter = configAdapter;
     }
 }

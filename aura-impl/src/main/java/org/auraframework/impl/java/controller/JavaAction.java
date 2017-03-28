@@ -104,7 +104,7 @@ public class JavaAction extends AbstractActionImpl<JavaActionDef> {
 
     /**
      * Add an exception to our set of errors.
-     * 
+     *
      * @param t the throwable to add.
      * @param newState the 'State' to set.
      * @param loggable should this exception be run through the 'exception adapter'.

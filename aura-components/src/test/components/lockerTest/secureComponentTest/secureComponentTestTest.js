@@ -5,7 +5,8 @@
      */
 
     // LockerService not supported on  IE
-    browsers: ["-IE8", "-IE9", "-IE10", "-IE11"],
+    // TODO(W-3674741,W-3674751): FF and iOS browser versions in autobuilds are too far behind
+    browsers: ["-IE8", "-IE9", "-IE10", "-IE11", "-FIREFOX", "-IPHONE", "-IPAD"],
 
     setUp: function(cmp) {
         cmp.set("v.testUtils", $A.test);
@@ -138,12 +139,24 @@
             }
         ]
     },
-    
+
     testMarkupComponentAccessToFacet: {
         test: function(cmp) {
             cmp.callFacetMethodFromMarkupComponent();
             $A.test.assertTrue(cmp.find("child").get("v.isSecureComponent"), 
             "Expected component in markup to get back SecureComponent when calling find() on markup element");
+        }
+    },
+
+    testGetName: {
+        test: function(cmp) {
+            cmp.testGetName();
+        }
+    },
+
+    testGetType: {
+        test: function(cmp) {
+            cmp.testGetType();
         }
     }
 })

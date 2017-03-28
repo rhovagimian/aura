@@ -18,6 +18,7 @@
 <aura:component extensible="true" implements="ui:panelType" description="A panel slides out to display a form for input or other information over the main UI, and it can be full screen or not. Use only one instance of ui:panelManager2 to manage your panels.">
     <aura:import library="ui:panelLib" property="lib"/>
     <aura:import library="ui:panelPositioningLib" property="positioningLib" />
+    <aura:import library="ui:focusManagerLib" property="focusLib" />
 
     <aura:attribute name="title" type="String" description="The title of the dialog window" />
     <aura:attribute name="devNameOrId" type="String" description="Id or alias for the panel" />
@@ -41,6 +42,10 @@
     <aura:attribute name="inside" type="Boolean" default="false" description="Positions the element inside the target"/>
     <aura:attribute name="advancedConfig" type="Object" description="Advanced positioning options, overrides direction. align and targetAlign are required, vertPad is optional."/>
     <aura:attribute name="pad" type="Integer" default="15" description="The padding in pixels. The default is 15px." />
+    <aura:attribute name="pointerPad" type="Integer" default="-15" description="The pointer padding in pixels. The default is -15px." />
+    <aura:attribute name="boundingBoxPad" type="Integer" default="20" description="The bounding box padding in pixels. The default is 20px." />
+    <aura:attribute name="boxDirectionPad" type="Integer" default="5" description="The box direction padding in pixels. The default is 5px." />
+    <aura:attribute name="classNames" type="String" default="" description="The extra classname can be added to panel." />
     <aura:attribute name="trapFocus" type="Boolean" default="false" description="Indicates if we should trap the focus inside the panel. If true, the esc key always closes the current panel which has focus. If false, the esc key and tab out closes the panel. The default is false."/>
 
     <aura:handler name="init" value="{!this}" action="{!c.init}" />

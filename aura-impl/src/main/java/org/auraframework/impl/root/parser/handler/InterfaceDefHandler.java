@@ -31,7 +31,7 @@ import org.auraframework.impl.root.intf.InterfaceDefImpl;
 import org.auraframework.service.ContextService;
 import org.auraframework.service.DefinitionService;
 import org.auraframework.system.AuraContext;
-import org.auraframework.system.Source;
+import org.auraframework.system.TextSource;
 import org.auraframework.throwable.quickfix.QuickFixException;
 import org.auraframework.util.AuraTextUtil;
 
@@ -64,7 +64,7 @@ public class InterfaceDefHandler extends RootTagHandler<InterfaceDef> {
         this.contextService = null;
     }
 
-    public InterfaceDefHandler(DefDescriptor<InterfaceDef> descriptor, Source<?> source, XMLStreamReader xmlReader,
+    public InterfaceDefHandler(DefDescriptor<InterfaceDef> descriptor, TextSource<?> source, XMLStreamReader xmlReader,
                                boolean isInInternalNamespace, DefinitionService definitionService,
                                ContextService contextService,
                                ConfigAdapter configAdapter, DefinitionParserAdapter definitionParserAdapter) {
@@ -75,6 +75,7 @@ public class InterfaceDefHandler extends RootTagHandler<InterfaceDef> {
             builder.setOwnHash(source.getHash());
         }
         builder.extendsDescriptors = new HashSet<>();
+        builder.setDescriptor(descriptor);
         this.contextService = contextService;
     }
 
@@ -151,10 +152,8 @@ public class InterfaceDefHandler extends RootTagHandler<InterfaceDef> {
     }
 
     @Override
-    protected InterfaceDef createDefinition() {
-        builder.setDescriptor(getDefDescriptor());
+    protected void finishDefinition() {
         builder.setLocation(startLocation);
-        return builder.build();
     }
 
     @Override
@@ -166,7 +165,7 @@ public class InterfaceDefHandler extends RootTagHandler<InterfaceDef> {
     }
 
     @Override
-    protected RootDefinitionBuilder<InterfaceDef> getBuilder() {
+    public RootDefinitionBuilder<InterfaceDef> getBuilder() {
         return builder;
     }
 

@@ -28,7 +28,7 @@ import org.auraframework.def.TokensImportDef;
 import org.auraframework.expression.PropertyReference;
 import org.auraframework.impl.css.token.TokensDefImpl;
 import org.auraframework.service.DefinitionService;
-import org.auraframework.system.Source;
+import org.auraframework.system.TextSource;
 import org.auraframework.throwable.quickfix.InvalidAccessValueException;
 import org.auraframework.throwable.quickfix.QuickFixException;
 import org.auraframework.util.AuraTextUtil;
@@ -64,12 +64,14 @@ public final class TokensDefHandler extends RootTagHandler<TokensDef> {
         super();
     }
 
-    public TokensDefHandler(DefDescriptor<TokensDef> defDescriptor, Source<TokensDef> source, XMLStreamReader xmlReader,
+    public TokensDefHandler(DefDescriptor<TokensDef> defDescriptor, TextSource<TokensDef> source, XMLStreamReader xmlReader,
                             boolean isInInternalNamespace, DefinitionService definitionService,
                             ConfigAdapter configAdapter, DefinitionParserAdapter definitionParserAdapter)
             throws QuickFixException {
         super(defDescriptor, source, xmlReader, isInInternalNamespace, definitionService, configAdapter, definitionParserAdapter);
         builder.setOwnHash(source.getHash());
+        builder.setDescriptor(defDescriptor);
+        builder.setLocation(startLocation);
     }
 
     @Override
@@ -83,7 +85,7 @@ public final class TokensDefHandler extends RootTagHandler<TokensDef> {
     }
 
     @Override
-    protected RootDefinitionBuilder<TokensDef> getBuilder() {
+    public RootDefinitionBuilder<TokensDef> getBuilder() {
         return builder;
     }
 
@@ -163,13 +165,5 @@ public final class TokensDefHandler extends RootTagHandler<TokensDef> {
     @Override
     public void addExpressionReferences(Set<PropertyReference> propRefs) {
         builder.addAllExpressionRefs(propRefs);
-    }
-
-    @Override
-    protected TokensDef createDefinition() throws QuickFixException {
-        builder.setDescriptor(getDefDescriptor());
-        builder.setLocation(startLocation);
-
-        return builder.build();
     }
 }

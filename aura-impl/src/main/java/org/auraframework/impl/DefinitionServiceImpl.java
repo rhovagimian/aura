@@ -16,6 +16,7 @@
 package org.auraframework.impl;
 
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -39,7 +40,6 @@ import org.auraframework.def.DefDescriptor.DescriptorKey;
 import org.auraframework.def.Definition;
 import org.auraframework.def.DefinitionAccess;
 import org.auraframework.def.DescriptorFilter;
-import org.auraframework.def.HasJavascriptReferences;
 import org.auraframework.def.ParentedDef;
 import org.auraframework.def.RootDefinition;
 import org.auraframework.def.TypeDef;
@@ -53,6 +53,7 @@ import org.auraframework.service.DefinitionService;
 import org.auraframework.service.LoggingService;
 import org.auraframework.system.AuraContext;
 import org.auraframework.system.AuraContext.Authentication;
+import org.auraframework.system.BundleSource;
 import org.auraframework.system.DefRegistry;
 import org.auraframework.system.DependencyEntry;
 import org.auraframework.system.Location;
@@ -371,7 +372,15 @@ public class DefinitionServiceImpl implements DefinitionService {
         AuraContext context = contextService.getCurrentContext();
         DefRegistry reg = context.getRegistries().getRegistryFor(descriptor);
         if (reg != null) {
-            return reg.getSource(descriptor);
+            Source<T> source = reg.getSource(descriptor);
+            // This is a bit of a hack.
+            if (source instanceof BundleSource) {
+                Map<DefDescriptor<?>,Source<?>> sources = ((BundleSource<T>)source).getBundledParts();
+                @SuppressWarnings("unchecked")
+                Source<T> newSource = (Source<T>)sources.get(descriptor);
+                return newSource;
+            }
+            return source;
         }
         return null;
     }
@@ -913,25 +922,31 @@ public class DefinitionServiceImpl implements DefinitionService {
 
     // FIXME: These should move to caching service.
 
-    /** Creates a key for the localDependencies, using DefType and FQN. */
-    private String makeLocalKey(@Nonnull DefDescriptor<?> descriptor) {
-        return descriptor.getDefType().toString() + ":" + descriptor.getQualifiedName().toLowerCase();
+    /**
+     * Creates a key for the localDependencies, using DefType, FQN, and modules
+     * */
+    private String makeLocalKey(@Nonnull DefDescriptor<?> descriptor, boolean modulesEnabled) {
+        String key = descriptor.getDefType().toString() + ":" + descriptor.getQualifiedName().toLowerCase();
+        if (modulesEnabled) {
+            key += ":m";
+        }
+        return key;
     }
 
     /**
-     * Creates a key for the global {@link #depsCache}, using UID, type, and FQN.
+     * Creates a key for the global {@link CachingServiceImpl#defsCache}, using UID, type, FQN, and modules
      */
-    private String makeGlobalKey(String uid, @Nonnull DefDescriptor<?> descriptor) {
-        return uid + "/" + makeLocalKey(descriptor);
+    private String makeGlobalKey(String uid, @Nonnull DefDescriptor<?> descriptor, boolean modulesEnabled) {
+        return uid + "/" + makeLocalKey(descriptor, modulesEnabled);
     }
 
     /**
-     * Creates a key for the global {@link #depsCache}, using only descriptor (and Mode internally).
+     * Creates a key for the global {@link CachingServiceImpl#defsCache}, using only descriptor (and Mode internally).
      *
      * @param descriptor - the descriptor use for the key
      */
-    private String makeNonUidGlobalKey(@Nonnull DefDescriptor<?> descriptor) {
-        return makeLocalKey(descriptor);
+    private String makeNonUidGlobalKey(@Nonnull DefDescriptor<?> descriptor, boolean modulesEnabled) {
+        return makeLocalKey(descriptor, modulesEnabled);
     }
 
     /**
@@ -940,7 +955,8 @@ public class DefinitionServiceImpl implements DefinitionService {
      * This routine always compiles the definition, even if it is in the caches. If the incoming descriptor does not
      * correspond to a definition, it will return null, otherwise, on failure it will throw a QuickFixException.
      *
-     * Please look at {@link #localDependencies} if you are mucking in here.
+     * Please look at {@link org.auraframework.impl.context.AuraContextImpl.LocalDefs#localDependencies}
+     * if you are mucking in here.
      *
      * Side Effects:
      * <ul>
@@ -957,10 +973,11 @@ public class DefinitionServiceImpl implements DefinitionService {
      */
     @CheckForNull
     protected <T extends Definition> DependencyEntry compileDE(@Nonnull DefDescriptor<T> descriptor) throws QuickFixException{
-        // See localDependencies commentcurrentCC
-        String key = makeLocalKey(descriptor);
+        // See localDependencies comment
         CompileContext currentCC = threadContext.get();
         AuraContext context = contextService.getCurrentContext();
+        boolean modulesEnabled = context.isModulesEnabled();
+        String key = makeLocalKey(descriptor, modulesEnabled);
         Cache<DefDescriptor<?>, Optional<? extends Definition>> defsCache = cachingService.getDefsCache();
 
         if (currentCC != null) {
@@ -974,8 +991,6 @@ public class DefinitionServiceImpl implements DefinitionService {
         try {
             currentCC.addMap(AuraStaticControllerDefRegistry.getInstance(this).getAll());
             Definition def = compileDef(descriptor, currentCC, false);
-            DependencyEntry de;
-            String uid;
 
             if (def == null) {
                 return null;
@@ -985,10 +1000,10 @@ public class DefinitionServiceImpl implements DefinitionService {
 
             // Sort based on descriptor only (not level) for uid calculation.
             // There are situations where components dependencies are read at different
-            // levels where affected the ordering of dependencies creating different uid.
+            // levels affecting the ordering of dependencies and creates different uid.
             //
             // Using descriptor only produces a more consistent UID
-            Collections.sort(compiled, (cd1, cd2) -> cd1.descriptor.compareTo(cd2.descriptor));
+            Collections.sort(compiled, Comparator.comparing(cd2 -> cd2.descriptor));
 
             //
             // Now walk the sorted list, building up our dependencies, and uid
@@ -1014,38 +1029,43 @@ public class DefinitionServiceImpl implements DefinitionService {
                 sb.append(",");
                 globalBuilder.addString(sb.toString());
             }
-            uid = globalBuilder.build().toString();
+            // UID is calculated with ALL defs of both component and module so the UID remains the same
+            String uid = globalBuilder.build().toString();
 
             //
             // Now try a re-lookup. This may catch existing cached
             // entries where uid was null.
             //
-            de = getDE(uid, descriptor);
+            DependencyEntry de = getDE(uid, descriptor);
             if (de != null) {
                 return de;
             }
 
-            Set<DefDescriptor<? extends Definition>> deps = Sets.newLinkedHashSet();
-
-            // level sorting is important for css and aura:library dependency ordering
-            Collections.sort(compiled);
-            for (CompilingDef<?> cd : compiled) {
-                deps.add(cd.descriptor);
-            }
+            de = createDependencyEntry(compiled, uid, clientLibs);
 
             CompilingDef<T> cd = currentCC.getCompiling(descriptor);
-
-            de = new DependencyEntry(uid, Collections.unmodifiableSet(deps), clientLibs);
             Cache<String, DependencyEntry> depsCache = cachingService.getDepsCache();
             if (cd.cacheable) {
                 // put UID-qualified descriptor key for dependency
-                depsCache.put(makeGlobalKey(de.uid, descriptor), de);
+                depsCache.put(makeGlobalKey(de.uid, descriptor, modulesEnabled), de);
+
+                if (!currentCC.hasSwitchableReference) {
+                    // if no switchable references detected, DE is the same for both aura or modules
+                    // so save so that the other doesn't have to go through compilation again.
+                    depsCache.put(makeGlobalKey(de.uid, descriptor, !modulesEnabled), de);
+                }
 
                 // put unqualified descriptor key for dependency
                 if (currentCC.shouldCacheDependencies) {
-                    depsCache.put(makeNonUidGlobalKey(descriptor), de);
+                    depsCache.put(makeNonUidGlobalKey(descriptor, modulesEnabled), de);
+
+                    if (!currentCC.hasSwitchableReference) {
+                        // if no switchable references detected, DE is the same for both aura or modules
+                        depsCache.put(makeNonUidGlobalKey(descriptor, !modulesEnabled), de);
                 }
             }
+            }
+
             // See localDependencies comment
             context.addLocalDependencyEntry(key, de);
             return de;
@@ -1059,12 +1079,26 @@ public class DefinitionServiceImpl implements DefinitionService {
         }
     }
 
+    private DependencyEntry createDependencyEntry(List<CompilingDef<?>> compiled, String uid,
+                                                  List<ClientLibraryDef> clientLibs) {
+        Set<DefDescriptor<? extends Definition>> deps = Sets.newLinkedHashSet();
+        // level sorting is important for css and aura:library dependency ordering
+        Collections.sort(compiled);
+
+        for (CompilingDef<?> cd : compiled) {
+            deps.add(cd.descriptor);
+        }
+
+        return new DependencyEntry(uid, Collections.unmodifiableSet(deps), clientLibs);
+    }
+
     /**
      * Get a dependency entry for a given uid.
      *
      * This is a convenience routine to check both the local and global cache for a value.
      *
-     * Please look at {@link #localDependencies} if you are mucking in here.
+     * Please look at {@link org.auraframework.impl.context.AuraContextImpl.LocalDefs#localDependencies}
+     * if you are mucking in here.
      *
      * Side Effects:
      * <ul>
@@ -1078,8 +1112,9 @@ public class DefinitionServiceImpl implements DefinitionService {
     private DependencyEntry getDE(@CheckForNull String uid, @Nonnull DefDescriptor<?> descriptor) {
         // See localDependencies comment
         AuraContext context = contextService.getCurrentContext();
+        boolean modulesEnabled = context.isModulesEnabled();
         Cache<String, DependencyEntry> depsCache = cachingService.getDepsCache();
-        String key = makeLocalKey(descriptor);
+        String key = makeLocalKey(descriptor, modulesEnabled);
         DependencyEntry de;
 
         if (uid != null) {
@@ -1087,14 +1122,15 @@ public class DefinitionServiceImpl implements DefinitionService {
             if (de != null) {
                 return de;
             }
-            de = depsCache.getIfPresent(makeGlobalKey(uid, descriptor));
+            // retrieves correct DE via module addition to cache key
+            de = depsCache.getIfPresent(makeGlobalKey(uid, descriptor, modulesEnabled));
         } else {
             // See localDependencies comment
             de = context.getLocalDependencyEntry(key);
             if (de != null) {
                 return de;
             }
-            de = depsCache.getIfPresent(makeNonUidGlobalKey(descriptor));
+            de = depsCache.getIfPresent(makeNonUidGlobalKey(descriptor, modulesEnabled));
         }
         if (de != null) {
             // See localDependencies comment
@@ -1231,13 +1267,14 @@ public class DefinitionServiceImpl implements DefinitionService {
      */
     private static class CompileContext {
         public final AuraContext context;
-        public final Map<DefDescriptor<? extends Definition>, CompilingDef<?>> compiled = Maps.newHashMap();
+        public Map<DefDescriptor<? extends Definition>, CompilingDef<?>> compiled = Maps.newHashMap();
         public final Cache<DefDescriptor<?>, Optional<? extends Definition>> defsCache;
         public final List<ClientLibraryDef> clientLibs;
         public final DefDescriptor<? extends Definition> topLevel;
         public final RegistrySet registries;
         public final boolean compiling;
         public int level;
+        public boolean hasSwitchableReference;
 
         /** Is this def's dependencies cacheable? */
         public boolean shouldCacheDependencies;
@@ -1253,6 +1290,7 @@ public class DefinitionServiceImpl implements DefinitionService {
             this.level = 0;
             this.shouldCacheDependencies = true;
             this.compiling = true;
+            this.hasSwitchableReference = false;
         }
 
         public <D extends Definition> CompilingDef<D> getCompiling(DefDescriptor<D> descriptor) {
@@ -1277,6 +1315,10 @@ public class DefinitionServiceImpl implements DefinitionService {
                 addEntry(entry.getKey(), entry.getValue());
             }
         }
+
+        public void setHasSwitchableReference(boolean hasSwitchableReference) {
+            this.hasSwitchableReference = this.hasSwitchableReference || hasSwitchableReference;
+        }
     }
 
     private final ThreadLocal<CompileContext> threadContext = new ThreadLocal<>();
@@ -1298,6 +1340,8 @@ public class DefinitionServiceImpl implements DefinitionService {
         // First, check our local cached defs to see if we have a fully compiled version.
         // in this case, we don't care about caching, since we are done.
         //
+        // Already compiled defs are retrieved from cache even during recompilation for modules
+        //
         Optional<D> optLocalDef = currentCC.context.getLocalDef(compiling.descriptor);
         if (optLocalDef != null) {
             D localDef = optLocalDef.orNull();
@@ -1312,6 +1356,8 @@ public class DefinitionServiceImpl implements DefinitionService {
                 if (currentCC.shouldCacheDependencies && currentCC.context.isLocalDefNotCacheable(compiling.descriptor)) {
                     currentCC.shouldCacheDependencies = false;
                 }
+                // bubble up flag to current CompileContext for recompilation
+                currentCC.setHasSwitchableReference(compiling.def.hasSwitchableReference());
                 return true;
             } else {
                 return false;
@@ -1331,6 +1377,7 @@ public class DefinitionServiceImpl implements DefinitionService {
                 compiling.def = cachedDef;
                 compiling.descriptor = canonical;
                 compiling.built = false;
+                currentCC.setHasSwitchableReference(compiling.def.hasSwitchableReference());
                 return true;
             } else {
                 return false;
@@ -1376,6 +1423,10 @@ public class DefinitionServiceImpl implements DefinitionService {
             loggingService.incrementNum(LoggingService.DEF_COUNT);
             compiling.def.validateDefinition();
         }
+
+        // find def containing switchable reference so we can recompile
+        currentCC.setHasSwitchableReference(compiling.def.hasSwitchableReference());
+
         return true;
     }
 
@@ -1481,12 +1532,7 @@ public class DefinitionServiceImpl implements DefinitionService {
                             // throw new
                             // AuraRuntimeException("Nested add of "+cd.descriptor+" during validation of "+currentCC.topLevel);
                         }
-                        // Validate, including JavaScript if we can cache 
-                        if (cd.cacheable && cd.def instanceof HasJavascriptReferences) {
-                            ((HasJavascriptReferences) cd.def).validateReferences(true);
-                        } else {
                             cd.def.validateReferences();
-                        }
                         cd.validated = true;
                     }
                 } finally {

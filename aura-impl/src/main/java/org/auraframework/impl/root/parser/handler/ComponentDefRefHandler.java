@@ -17,146 +17,37 @@ package org.auraframework.impl.root.parser.handler;
 
 import org.auraframework.adapter.ConfigAdapter;
 import org.auraframework.adapter.DefinitionParserAdapter;
-import org.auraframework.def.AttributeDef;
-import org.auraframework.def.AttributeDefRef;
 import org.auraframework.def.ComponentDef;
 import org.auraframework.def.ComponentDefRef;
-import org.auraframework.def.ComponentDefRef.Load;
-import org.auraframework.def.DefDescriptor;
+import org.auraframework.def.DefinitionReference;
 import org.auraframework.def.RootDefinition;
 import org.auraframework.impl.root.AttributeDefRefImpl;
 import org.auraframework.impl.root.component.ComponentDefRefImpl;
-import org.auraframework.impl.util.TextTokenizer;
+import org.auraframework.impl.root.component.ComponentDefRefImpl.Builder;
 import org.auraframework.service.DefinitionService;
-import org.auraframework.system.Source;
-import org.auraframework.throwable.AuraRuntimeException;
+import org.auraframework.system.TextSource;
 import org.auraframework.throwable.quickfix.QuickFixException;
-import org.auraframework.util.AuraTextUtil;
 
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 /**
  * Handles all references to other components. Note that while the reference to the other component is created here, it
  * is not validated until the {@link ComponentDefRefImpl#validateReferences()} method is called by loading registry.
  */
-public class ComponentDefRefHandler<P extends RootDefinition> extends ParentedTagHandler<ComponentDefRef, P> {
+public class ComponentDefRefHandler<P extends RootDefinition> extends BaseDefRefHandler<ComponentDefRef, P, ComponentDef, ComponentDefRefImpl.Builder> {
 
-    private List<ComponentDefRef> body;
-    protected ComponentDefRefImpl.Builder builder = new ComponentDefRefImpl.Builder();
-
-    public ComponentDefRefHandler() {
-        super();
-    }
-
-    public ComponentDefRefHandler(RootTagHandler<P> parentHandler, XMLStreamReader xmlReader, Source<?> source,
+    public ComponentDefRefHandler(RootTagHandler<P> parentHandler, XMLStreamReader xmlReader, TextSource<?> source,
                                   boolean isInInternalNamespace, DefinitionService definitionService,
                                   ConfigAdapter configAdapter, DefinitionParserAdapter definitionParserAdapter) {
         super(parentHandler, xmlReader, source, isInInternalNamespace, definitionService, configAdapter, definitionParserAdapter);
+    }
+
+    @Override
+    protected Builder createBuilder() {
+        Builder builder = new ComponentDefRefImpl.Builder();
         builder.setDescriptor(definitionService.getDefDescriptor(getTagName(), ComponentDef.class));
-        builder.setLocation(getLocation());
-        builder.setAccess(getAccess(isInInternalNamespace));
-        body = new ArrayList<>();
-    }
-
-    /**
-     * this one is only used by {@link HTMLComponentDefRefHandler}, which passes in the descriptor, the one above can't
-     * use it cause of java stupidness
-     */
-    protected ComponentDefRefHandler(RootTagHandler<P> parentHandler, DefDescriptor<ComponentDef> descriptor,
-                                     XMLStreamReader xmlReader, Source<?> source, boolean isInInternalNamespace,
-                                     DefinitionService definitionService,
-                                     ConfigAdapter configAdapter, DefinitionParserAdapter definitionParserAdapter) {
-        super(parentHandler, xmlReader, source, isInInternalNamespace, definitionService, configAdapter, definitionParserAdapter);
-        builder.setDescriptor(descriptor);
-        builder.setLocation(getLocation());
-        body = new ArrayList<>();
-    }
-
-    @Override
-    protected void readAttributes() throws QuickFixException {
-        for (Map.Entry<DefDescriptor<AttributeDef>, AttributeDefRef> entry : getAttributes().entrySet()) {
-            builder.setAttribute(entry.getKey(), entry.getValue());
-        }
-    }
-
-    @SuppressWarnings("rawtypes")
-    @Override
-    protected void readSystemAttributes() throws QuickFixException {
-        super.readSystemAttributes();
-        builder.setLocalId(getSystemAttributeValue("id"));
-        String load = getSystemAttributeValue("load");
-        if (!AuraTextUtil.isNullEmptyOrWhitespace(load)) {
-            Load loadVal;
-            try {
-                loadVal = Load.valueOf(load.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                throw new AuraRuntimeException(String.format("Invalid value '%s' specified for 'aura:load' attribute",
-                        load), getLocation());
-            }
-            builder.setLoad(loadVal);
-            if (loadVal == Load.LAZY || loadVal == Load.EXCLUSIVE) {
-                ((BaseComponentDefHandler) getParentHandler()).setRender("client");
-            }
-        }
-
-        String flavor = getSystemAttributeValue("flavor");
-        if (!AuraTextUtil.isNullEmptyOrWhitespace(flavor)) {
-            TextTokenizer tt = TextTokenizer.tokenize(flavor, getLocation());
-            builder.setFlavor(tt.asValue(getParentHandler()));
-        }
-    }
-
-    protected Map<DefDescriptor<AttributeDef>, AttributeDefRef> getAttributes() throws QuickFixException {
-        // TODOJT: add varargs "validAttributeNames" to this and validate that
-        // any attributes we find are in that list.
-        // TODOJT: possibly those arguments are like *Param objects with
-        // built-in value validation?
-        Map<DefDescriptor<AttributeDef>, AttributeDefRef> attributes = new LinkedHashMap<>();
-
-        for (int i = 0; i < xmlReader.getAttributeCount(); i++) {
-            String attName = xmlReader.getAttributeLocalName(i);
-            String prefix = xmlReader.getAttributePrefix(i);
-            if (!XMLHandler.isSystemPrefixed(attName, prefix)) {
-                // W-2316503: remove compatibility code for both SJSXP and Woodstox
-                if (!AuraTextUtil.isNullEmptyOrWhitespace(prefix) && !attName.contains(":")) {
-                    attName = prefix + ":" + attName;
-                }
-                DefDescriptor<AttributeDef> att = definitionService.getDefDescriptor(attName, AttributeDef.class);
-
-                String attValue = xmlReader.getAttributeValue(i);
-                if (attributes.containsKey(att)) {
-                    error("Duplicate values for attribute %s on tag %s", att, getTagName());
-                }
-                TextTokenizer tt = TextTokenizer.tokenize(attValue, getLocation());
-                Object value = tt.asValue(getParentHandler());
-
-                AttributeDefRefImpl.Builder atBuilder = new AttributeDefRefImpl.Builder();
-                atBuilder.setDescriptor(att);
-                atBuilder.setLocation(getLocation());
-                atBuilder.setValue(value);
-                atBuilder.setAccess(getAccess(isInInternalNamespace));
-                attributes.put(att, atBuilder.build());
-            }
-        }
-
-        return attributes;
-    }
-
-    @Override
-    protected ComponentDefRef createDefinition() {
-        if (!body.isEmpty()) {
-            setBody(body);
-        }
-        return builder.build();
-    }
-
-    protected void setBody(List<ComponentDefRef> body) {
-        builder.setAttribute(AttributeDefRefImpl.BODY_ATTRIBUTE_NAME, body);
+        return builder;
     }
 
     /**
@@ -172,28 +63,17 @@ public class ComponentDefRefHandler<P extends RootDefinition> extends ParentedTa
                     .getElement();
             builder.setAttribute(attributeDefRef.getDescriptor(), attributeDefRef);
         } else {
-            ComponentDefRef cdr = getDefRefHandler(getParentHandler()).getElement();
-            if (cdr.isFlavorable() || cdr.hasFlavorableChild()) {
+            DefinitionReference defRef = createDefRefDelegate(getParentHandler());
+            if (defRef.isFlavorable() || defRef.hasFlavorableChild()) {
                 builder.setHasFlavorableChild(true);
             }
-            body.add(cdr);
+            builder.setHasSwitchableReference(defRef.hasSwitchableReference());
+            body.add(defRef);
         }
-    }
-
-    @Override
-    protected void handleChildText() throws XMLStreamException, QuickFixException {
-        body.addAll(tokenizeChildText());
     }
 
     @Override
     public String getHandledTag() {
         return "Component Reference";
-    }
-
-    @Override
-    protected boolean handlesTag(String tag) {
-        // FIXMEDLP - this handler handles many tags, but should blacklist the
-        // ones we know it doesn't handle. #W-690036
-        return true;
     }
 }

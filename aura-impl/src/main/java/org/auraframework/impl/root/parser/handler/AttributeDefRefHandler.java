@@ -19,12 +19,12 @@ import com.google.common.collect.ImmutableSet;
 import org.auraframework.adapter.ConfigAdapter;
 import org.auraframework.adapter.DefinitionParserAdapter;
 import org.auraframework.def.AttributeDef;
-import org.auraframework.def.ComponentDefRef;
+import org.auraframework.def.DefinitionReference;
 import org.auraframework.def.RootDefinition;
 import org.auraframework.impl.root.AttributeDefRefImpl;
 import org.auraframework.impl.util.TextTokenizer;
 import org.auraframework.service.DefinitionService;
-import org.auraframework.system.Source;
+import org.auraframework.system.TextSource;
 import org.auraframework.throwable.quickfix.QuickFixException;
 import org.auraframework.util.AuraTextUtil;
 
@@ -47,14 +47,14 @@ public class AttributeDefRefHandler<P extends RootDefinition> extends ParentedTa
     private final static Set<String> ALLOWED_ATTRIBUTES = ImmutableSet.of(ATTRIBUTE_VALUE, ATTRIBUTE_ATTRIBUTE);
 
     private final AttributeDefRefImpl.Builder builder = new AttributeDefRefImpl.Builder();
-    private final List<ComponentDefRef> children = new ArrayList<>();
+    private final List<DefinitionReference> children = new ArrayList<>();
     private String stringValue;
 
     public AttributeDefRefHandler() {
         super();
     }
 
-    public AttributeDefRefHandler(RootTagHandler<P> parentHandler, XMLStreamReader xmlReader, Source<?> source,
+    public AttributeDefRefHandler(RootTagHandler<P> parentHandler, XMLStreamReader xmlReader, TextSource<?> source,
                                   boolean isInInternalNamespace, DefinitionService definitionService,
                                   ConfigAdapter configAdapter, DefinitionParserAdapter definitionParserAdapter) {
         super(parentHandler, xmlReader, source, isInInternalNamespace, definitionService, configAdapter, definitionParserAdapter);
@@ -74,7 +74,7 @@ public class AttributeDefRefHandler<P extends RootDefinition> extends ParentedTa
     }
 
     @Override
-    protected AttributeDefRefImpl createDefinition() throws QuickFixException {
+    protected void finishDefinition() throws QuickFixException {
         if (AuraTextUtil.isNullEmptyOrWhitespace(stringValue)) {
             if(!children.isEmpty()) {
                 builder.setValue(children);
@@ -85,7 +85,10 @@ public class AttributeDefRefHandler<P extends RootDefinition> extends ParentedTa
             TextTokenizer tt = TextTokenizer.tokenize(stringValue, getLocation());
             builder.setValue(tt.asValue(getParentHandler()));
         }
+    }
 
+    @Override
+    protected AttributeDefRefImpl createDefinition() throws QuickFixException {
         return builder.build();
     }
 
@@ -96,7 +99,9 @@ public class AttributeDefRefHandler<P extends RootDefinition> extends ParentedTa
 
     @Override
     protected void handleChildTag() throws XMLStreamException, QuickFixException {
-        children.add(getDefRefHandler(getParentHandler()).getElement());
+        DefinitionReference dr = createDefRefDelegate(getParentHandler());
+        builder.setHasSwitchableReference(dr.hasSwitchableReference());
+        children.add(dr);
     }
 
     @Override

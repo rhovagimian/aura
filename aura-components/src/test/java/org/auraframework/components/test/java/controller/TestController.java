@@ -15,8 +15,13 @@
  */
 package org.auraframework.components.test.java.controller;
 
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+
+import javax.inject.Inject;
+
+import org.auraframework.adapter.ServerErrorUtilAdapter;
 import org.auraframework.annotations.Annotations.ServiceComponent;
 import org.auraframework.def.ComponentDef;
 import org.auraframework.def.DefDescriptor;
@@ -27,10 +32,11 @@ import org.auraframework.service.ContextService;
 import org.auraframework.service.InstanceService;
 import org.auraframework.system.Annotations.AuraEnabled;
 import org.auraframework.system.Annotations.Key;
+import org.auraframework.util.json.Json;
+import org.auraframework.util.json.JsonSerializable;
 
-import javax.inject.Inject;
-import java.util.List;
-import java.util.Map;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 
 @ServiceComponent
 public class TestController implements Controller {
@@ -40,6 +46,9 @@ public class TestController implements Controller {
 
     @Inject
     private ContextService contextService;
+
+    @Inject
+    private ServerErrorUtilAdapter serverErrorUtilAdapter;
 
 
     @AuraEnabled
@@ -100,5 +109,40 @@ public class TestController implements Controller {
     public Component getNamedComponent(@Key("componentName") String componentName,
                                        @Key("attributes") Map<String, Object> attributes) throws Exception {
         return instanceService.getInstance(componentName, ComponentDef.class, attributes);
+    }
+
+    @AuraEnabled
+    public void handleException() {
+        serverErrorUtilAdapter.handleException("err");
+    }
+
+    @AuraEnabled
+    public void handleExceptionWithThrownArgument() {
+        serverErrorUtilAdapter.handleException("err", new RuntimeException());
+    }
+
+    @AuraEnabled
+    public void handleCustomException() {
+        serverErrorUtilAdapter.handleCustomException("err", new RuntimeException());
+    }
+
+    @AuraEnabled
+    public void handleCustomExceptionWithData() {
+        TestCustomErrorData data = new TestCustomErrorData("testCustomMessage");
+        serverErrorUtilAdapter.handleCustomException("err", new RuntimeException(), data);
+    }
+
+    private class TestCustomErrorData implements JsonSerializable {
+        private final String customMessage;
+        TestCustomErrorData(String message) {
+            this.customMessage = message;
+        }
+
+        @Override
+        public void serialize(Json json) throws IOException {
+            json.writeMapBegin();
+            json.writeMapEntry("customMessage", this.customMessage);
+            json.writeMapEnd();
+        }
     }
 }

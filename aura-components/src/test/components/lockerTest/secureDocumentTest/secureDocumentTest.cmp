@@ -20,14 +20,16 @@
 
     <aura:method name="testCreateDocumentFragmentReturnsSecureElement"/>
     <aura:method name="testCreateDocumentFragmentAndVerifyShape"/>
-    <aura:method name="testCreateScriptElementReturnsSecureScript"/>
+    <aura:method name="testCreateScriptElementReturnsSecureElement"/>
     <aura:method name="testCreateTextNodeReturnsSecureElement"/>
     <aura:method name="testCreateElementsAndPushToMarkup"/>
     <aura:method name="testGetElementByIdReturnsSecureElement"/>
     <aura:method name="testQuerySelectorReturnsSecureElement"/>
-    <aura:method name="testSecureDocumentCookie">
+    <aura:method name="testSecureDocumentCookieFiltersSystemMode">
         <aura:attribute name="cookie" type="String"/>
     </aura:method>
+    <aura:method name="testCookiesIsolatedToNamespace" />
+    <aura:method name="testCookiesAddRemove" />
     <aura:method name="testDocumentTitle"/>
     <aura:method name="testQuerySelectorAllReturnsSecureNodeList"/>
     <aura:method name="testDocumentBodyConstructorNotExposed"/>
@@ -43,4 +45,6 @@
     <div id="title">SecureDocument test</div>
 
     <div aura:id="content"/>
+
+    <lockerTestOtherNamespace:cookieTester aura:id="otherNs"/>
 </aura:component>

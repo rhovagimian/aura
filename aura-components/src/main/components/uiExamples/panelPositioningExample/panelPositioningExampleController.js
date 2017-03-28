@@ -27,6 +27,10 @@
         cmp.set('v.advanced', advanced);
     },
 
+    handleShowPointer: function(cmp, evt, helper) {
+        cmp.set("v.showPointer", evt.source.get('v.value'));
+    },
+
     handlePress: function(cmp, evt, helper) {
         var advanced = cmp.get('v.advanced');
         var body = $A.createComponentFromConfig({descriptor: 'markup://aura:unescapedHtml', attributes: {value: '<div class="panel-content">This is the panel</div>'}})
@@ -35,6 +39,9 @@
         var value = cmp.find('direction').get('v.value');
         var pad = parseInt(cmp.find('pad').get('v.value'),10);
         var padTop = cmp.find('padTop').get('v.value');
+        var bundingBoxPad = cmp.find('bundingBoxPad').get('v.value');
+        var boxDirectionPad = cmp.find('boxDirectionPad').get('v.value');
+        var pointerPad = cmp.find('pointerPad').get('v.value');
         var isInside;
         isInside = cmp.find('isInside').get('v.value');
 
@@ -42,6 +49,7 @@
             referenceElement: isInside ? bigTarget : littleTarget,
             showCloseButton: false,
             closeOnClickOut: true,
+            flavor: 'default, error',
             useTransition: false,
             body  : body,
             direction: value,
@@ -49,7 +57,12 @@
             boundingElement: isInside ? window : bigTarget,
             inside: isInside,
             pad: pad,
-            padTop: padTop !== undefined ? parseInt(padTop, 10) : undefined
+            padTop: padTop !== undefined ? parseInt(padTop, 10) : undefined,
+            pointerPad: pointerPad,
+            bundingBoxPad: bundingBoxPad,
+            boxDirectionPad: boxDirectionPad,
+            showPointer: cmp.get("v.showPointer"),
+            classNames: "slds-theme--warning,good"
         };
 
         if(cmp.find('isAdvanced').get('v.value')) {

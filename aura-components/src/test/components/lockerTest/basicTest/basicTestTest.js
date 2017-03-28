@@ -5,7 +5,8 @@
      */
 
     // LockerService not supported on IE
-    browsers: ["-IE8", "-IE9", "-IE10", "-IE11"],
+    // TODO(W-3674741,W-3674751): FF and iOS browser versions in autobuilds are too far behind
+    browsers: ["-IE8", "-IE9", "-IE10", "-IE11", "-FIREFOX", "-IPHONE", "-IPAD"],
 
     setUp: function(cmp) {
         cmp.set("v.testUtils", $A.test);
@@ -122,9 +123,11 @@
 
     testAttemptToEvalToWindow: {
         // This exploit not covered in IE11
-        browsers: ["-IE8", "-IE9", "-IE10", "-IE11"],
+        // TODO(W-3674741,W-3674751): FF and iOS browser versions in autobuilds are too far behind
+        browsers: ["-IE8", "-IE9", "-IE10", "-IE11", "-FIREFOX", "-IPHONE", "-IPAD"],
         test: function(cmp) {
-            cmp.testEvalBlocking();
+            //Taking into account if its a manual run (which runs inside an iframe) or an auto run
+            cmp.testEvalBlocking(window !== window.parent);
 
             // DCHASMAN TOOD Port these to cmp.testEvalBlocking()
 
@@ -205,6 +208,45 @@
         browsers: ["-IE8", "-IE9", "-IE10", "-IE11", "-FIREFOX", "-IPAD", "-IPHONE"],
         test: function(cmp) {
             cmp.testInstanceOf(window);
+        }
+    },
+    
+    testFilteringProxy: {
+        test: function(cmp) {
+            function TestPrototype() {
+            	return this;
+            };
+                        
+            var o = Object.create(TestPrototype.prototype, {
+            	someProperty: {
+            		configurable: true,
+            		enumerable: true,
+            		value: "somePropertyValue",
+            	},
+
+            	nonEnumerableProperty: {
+            		configurable: true,
+            		value: "nonEnumerablePropertyValue",
+            	},
+            	
+            	foo: {
+            		enumerable: true,
+            		value: function() {
+            			return "fooValue";
+            		}
+            	}
+            });
+                                   
+            var otherNamespace = cmp.find("otherNamespace");
+            otherNamespace.set("v.obj", o);
+            otherNamespace.setupTestFilteringProxy();
+
+            helper = cmp.getDef().getHelper();
+            helper._o = o;
+            helper._TestPrototype = TestPrototype;
+            helper._po = otherNamespace.getDef().getHelper()._po;
+            
+            cmp.testFilteringProxy();
         }
     }
 })

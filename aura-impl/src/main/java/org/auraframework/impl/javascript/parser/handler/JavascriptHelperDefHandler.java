@@ -22,7 +22,7 @@ import org.auraframework.def.DefDescriptor;
 import org.auraframework.def.HelperDef;
 import org.auraframework.impl.javascript.helper.JavascriptHelperDef.Builder;
 import org.auraframework.impl.util.JavascriptTokenizer;
-import org.auraframework.system.Source;
+import org.auraframework.system.TextSource;
 import org.auraframework.throwable.quickfix.QuickFixException;
 
 /**
@@ -34,7 +34,7 @@ public class JavascriptHelperDefHandler extends JavascriptHandler<HelperDef, Hel
 
     private final Builder builder = new Builder();
 
-    public JavascriptHelperDefHandler(DefDescriptor<HelperDef> descriptor, Source<?> source) {
+    public JavascriptHelperDefHandler(DefDescriptor<HelperDef> descriptor, TextSource<?> source) {
         super(descriptor, source);
     }
 
@@ -44,9 +44,10 @@ public class JavascriptHelperDefHandler extends JavascriptHandler<HelperDef, Hel
         new JavascriptTokenizer(getParentDescriptor(), code, getLocation()).process(builder);
 
         Map<String, Object> map = codeToMap(code);
-        String recode = mapToCode(map);
-        builder.setCode(recode);
-
+        if(map.size() > 0) {
+	        String recode = mapToCode(map);
+	        builder.setCode(recode);
+        }
         return builder.build();
     }
 

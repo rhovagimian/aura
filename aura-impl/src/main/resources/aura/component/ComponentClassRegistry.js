@@ -28,6 +28,22 @@ function ComponentClassRegistry () {
     this.classConstructors = {};
 }
 
+/** 
+ * By default all components will use Aura.Component.Component as the constructor.
+ * This wires up all the features a component might need.
+ * Some rootComponents are moving into the framework with custom Component extensions. 
+ * This map defines the constructor they use in buildConstructor
+ */
+ComponentClassRegistry.prototype.customConstructorMap = { 
+    /*eslint-disable no-undef*/
+    "aura$text":TextComponent,
+    "aura$html":HtmlComponent,
+    "aura$expression": ExpressionComponent,
+    "aura$if":IfComponent,
+    "aura$iteration":IterationComponent,
+    "aura$component":BaseComponent
+};
+
 /**
  * Detects if the component class exists without actually defining it.
  * @param {String} descriptor The qualified name of the component in the form markup://namespace:component
@@ -56,7 +72,7 @@ ComponentClassRegistry.prototype.addComponentClass = function(descriptor, export
  * @returns Either the class that defines the component you are requesting, or undefined if not found.
  * @export
  */
-ComponentClassRegistry.prototype.getComponentClass = function(descriptor) {
+ComponentClassRegistry.prototype.getComponentClass = function(descriptor, def) {
     var storedConstructor = this.classConstructors[descriptor];
     var url;
 
@@ -66,16 +82,34 @@ ComponentClassRegistry.prototype.getComponentClass = function(descriptor) {
             //#if {"excludeModes" : ["PRODUCTION"]}
                 url = $A.clientService.getSourceMapsUrl(descriptor);
                 exporter = $A.util.globalEval(exporter.toString(), null, url);
+                if(!exporter) {
+                    var defDescriptor = new Aura.System.DefDescriptor(descriptor);
+                    var includeComponentSource = defDescriptor.getPrefix() === "layout" || $A.clientService.isInternalNamespace(defDescriptor.getNamespace());
+                    var errorMessage = (!includeComponentSource) ? 
+                        "Hydrating the component" + descriptor + " failed." : 
+                        "Hydrating the component" + descriptor + " failed.\n Exporter code: " + exporter;
+                    var auraError = new $A.auraError(errorMessage, null, $A.severity.QUIET);
+                    auraError["component"] = descriptor;
+                    throw auraError;
+                }
             //#end
             var componentProperties = exporter();
             storedConstructor = this.buildComponentClass(componentProperties);
             this.classConstructors[descriptor] = storedConstructor;
             // No need to keep the exporter in memory.
-            delete this.classExporter[descriptor];
+            this.classExporter[descriptor] = null;
+        } else if (def && def.interop) {
+            return this.buildInteropComponentClass(descriptor, def);
         }
     }
 
     return storedConstructor;
+};
+
+ComponentClassRegistry.prototype.buildInteropComponentClass = function(descriptor, def) {
+    var interopCmpClass = this.buildConstructor({ "interopClass" : def.interopClass }, def.interopClassName, Aura.Component.InteropComponent);
+    this.classConstructors[descriptor] = interopCmpClass;
+    return interopCmpClass;
 };
 
 /**
@@ -148,34 +182,40 @@ ComponentClassRegistry.prototype.buildLibraries = function(componentProperties) 
  * @param {Object} componentProperties The pre-built component properties.
  * @returns {Function} The component class.
  */
-ComponentClassRegistry.prototype.buildConstructor = function(componentProperties) {
+
+ComponentClassRegistry.prototype.buildConstructor = function(componentProperties, name, Ctor) {
     // Create a named function dynamically to use as a constructor.
     // TODO: Update to the following line when all browsers have support for dynamic function names.
     // (only supported in IE11+).
     // var componentConstructor = function [className](){ Component.apply(this, arguments); };
+    var componentConstructor;
+    var className = name || componentProperties["meta"]["name"];
+    Ctor = Ctor || this.customConstructorMap[className] || Component;
 
     //#if {"modes" : ["PRODUCTION", "PRODUCTIONDEBUG"]}
-    var componentConstructor = function(config, localCreation) {
-        Component.call(this, config, localCreation);
+    componentConstructor = function(config) {
+        Ctor.call(this, config);
     };
     //#end
 
     //#if {"excludeModes" : ["PRODUCTION", "PRODUCTIONDEBUG"]}
-    var className = componentProperties["meta"]["name"];
-
-    /*eslint-disable no-redeclare*/
-    var componentConstructor = $A.util.globalEval("(function " + className + "(config, localCreation) { Component.call(this, config, localCreation); });", {
-        "Component": Component
+    componentConstructor = $A.util.globalEval("(function " + className + "(config) { Ctor.call(this, config); });", {
+        "Ctor": Ctor
     });
-    /*eslint-enable no-redeclare*/
     //#end
-
+    
     // Extends from Component (and restore constructor).
-    componentConstructor.prototype = Object.create(Component.prototype);
+    componentConstructor.prototype = Object.create(Ctor.prototype);
     componentConstructor.prototype.constructor = componentConstructor;
 
     // Mixin inner classes (controller, helper, renderer, provider) and meta properties.
-    Object.assign(componentConstructor.prototype, componentProperties);
+    // Some components will already have this defined in their Component class, so don't overwrite if it is already defined.
+    var constructorPrototype = componentConstructor.prototype;
+    for(var key in componentProperties) {
+        if(constructorPrototype[key] === undefined){
+            constructorPrototype[key] = componentProperties[key];
+        }
+    }
 
     return componentConstructor;
 };

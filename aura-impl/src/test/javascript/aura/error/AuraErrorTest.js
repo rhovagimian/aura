@@ -100,7 +100,7 @@ Test.Aura.AuraErrorTest = function() {
         [Fact]
         function ReturnsMessageofMessageAndInnerError() {//when pass in both message and innerError, we construct message from them
             var actual;
-            var innerError = new TypeError("from inner error");
+            var innerError = "from inner error";
             var message = "from ctor";
             var expected = message + " [" + innerError.toString() + "]";
 
@@ -225,6 +225,36 @@ press()@http://localhost:9090/components/ui/button.js:34:16";
 
             Assert.Equal(expected, actual);
         }
+
+        [Fact]
+        function ReturnsFrameworkStackframesBeforeNonFrameworkStackframe() {
+            var actual;
+            var innerError = new Error();
+            innerError.message = "Error from app client controller";
+            innerError.stack = "Error: Error from app client controller\n\
+    at Action.$runDeprecated$ (http://localhost:9090/auraFW/javascript/iMVf5-orschKyiiWELafJg/aura_dev.js:8469:36)\n\
+    at Object.Component$getActionCaller [as $handler$] (http://localhost:9090/auraFW/javascript/iMVf5-orschKyiiWELafJg/aura_dev.js:6695:20)\n\
+    at throwErrorFromClientController (http://localhost:9090/components/auratest/errorHandlingApp.js:42:15)\n\
+    at Aura.$Event$.$Event$.$executeHandlerIterator$ (http://localhost:9090/auraFW/javascript/iMVf5-orschKyiiWELafJg/aura_dev.js:8100:15)\n\
+    at Aura.$Event$.$Event$.$executeHandlers$ (http://localhost:9090/auraFW/javascript/iMVf5-orschKyiiWELafJg/aura_dev.js:8078:8)\n\
+    at http://localhost:9090/auraFW/javascript/iMVf5-orschKyiiWELafJg/aura_dev.js:8130:10\n\
+    at AuraInstance.$run$ (http://localhost:9090/auraFW/javascript/iMVf5-orschKyiiWELafJg/aura_dev.js:18350:12)\n\
+    at Object.catchAndFireEvent (http://localhost:9090/components/ui/button.js:90:33)\n\
+    at Aura.$Event$.$Event$.$fire$ (http://localhost:9090/auraFW/javascript/iMVf5-orschKyiiWELafJg/aura_dev.js:8128:6)\n\
+    at press (http://localhost:9090/components/ui/button.js:34:16)";
+            var expected = "Action.$runDeprecated$()@http://localhost:9090/auraFW/javascript/iMVf5-orschKyiiWELafJg/aura_dev.js:8469:36\n\
+Object.Component$getActionCaller [as $handler$]()@http://localhost:9090/auraFW/javascript/iMVf5-orschKyiiWELafJg/aura_dev.js:6695:20\n\
+throwErrorFromClientController()@http://localhost:9090/components/auratest/errorHandlingApp.js:42:15\n\
+Object.catchAndFireEvent()@http://localhost:9090/components/ui/button.js:90:33\n\
+press()@http://localhost:9090/components/ui/button.js:34:16";
+
+            getAuraMock(function() {
+                actual = new Aura.Errors.AuraError(null, innerError).stackTrace;
+            });
+
+            Assert.Equal(expected, actual);
+        }
+
 
         [Fact]
         function ReturnsInnerErrorSeverity() {

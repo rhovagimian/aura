@@ -659,7 +659,7 @@
             "pageStartTime":                        { type: "number" },
             "pageXOffset":                          { type: "number" },
             "pageYOffset":                          { type: "number" },
-            "parent":                               { type: "Window", support: false },
+            "parent":                               { type: "Window" },
             "parseFloat":                           { type: "function" },
             "parseInt":                             { type: "function" },
             "performance":                          { type: "Performance" },
@@ -693,7 +693,7 @@
             "stop":                                 { type: "function" },
             "styleMedia":                           { type: "StyleMedia" },
             "toolbar":                              { type: "BarProp" },
-            "top":                                  { type: "Window", support: false },
+            "top":                                  { type: "Window" },
             "undefined":                            { type: "Undefined" },
             "unescape":                             { type: "function", support: false },
             "webkitAudioContext":                   { type: "function", support: false },
@@ -724,9 +724,9 @@
             "window":                               { type: "Window" }
         },
         "EventTarget": {
-            "addEventListener":                 {type: "function" },
-            "dispatchEvent":                    {type: "function" },
-            "removeEventListener":              {type: "function" }
+            "addEventListener":                 { type: "function" },
+            "dispatchEvent":                    { type: "function" },
+            "removeEventListener":              { type: "function" }
         }
     }
 })

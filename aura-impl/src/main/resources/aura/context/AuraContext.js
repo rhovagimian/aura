@@ -60,6 +60,7 @@ Aura.Context.AuraContext = function AuraContext(config, initCallback) {
                             ;
     this.accessStack=[];
     this.tokens={};
+    this.isModulesEnabled = !!config["m"];
 
     var that = this;
 
@@ -159,9 +160,12 @@ Aura.Context.AuraContext.prototype.getCurrentAccessCaller=function(){
     return this.accessStack[this.accessStack.length-2];
 };
 
-/**
- * @export
-*/
+Aura.Context.AuraContext.prototype.getAccessStackHierarchy=function(){
+    return this.accessStack ? this.accessStack.map(function(component) {
+        return "[" + component.getType() + "]";
+    }).join(" > ") : null;
+};
+
 Aura.Context.AuraContext.prototype.setCurrentAccess=function(component){
     if(!component){
         component=this.getCurrentAccess();
@@ -175,9 +179,6 @@ Aura.Context.AuraContext.prototype.setCurrentAccess=function(component){
     }
 };
 
-/**
- *  @export
-*/
 Aura.Context.AuraContext.prototype.releaseCurrentAccess=function(){
     this.accessStack.pop();
 };
@@ -268,6 +269,9 @@ Aura.Context.AuraContext.prototype.encodeForServer = function(includeDynamic) {
         contextToSend["dn"] = $A.services.component.getDynamicNamespaces();
         contextToSend["globals"] = this.globalValueProviders.getValueProvider("$Global").serializeForServer();
     }
+    if(this.isModulesEnabled) {
+        contextToSend["m"] = 1;
+    }
     return $A.util.json.encode(contextToSend);
 };
 
@@ -291,35 +295,42 @@ Aura.Context.AuraContext.prototype.merge = function(otherContext) {
 
     this.enableAccessChecks=otherContext["enableAccessChecks"];
     this.isLockerServiceEnabled = this["isLockerServiceEnabled"] = $A.lockerService.containerSupportsRequiredFeatures() && otherContext["lockerEnabled"];
+    this.isModulesEnabled = !!otherContext["m"];
 
-    this.globalValueProviders.merge(otherContext["globalValueProviders"]);
-
-    if (otherContext["libraryDefs"]) {
-        defs = otherContext["libraryDefs"];
-        for (i = 0; i < defs.length; i++) {
-            $A.componentService.saveLibraryConfig(defs[i]);
-        }
-    }
-
-    if (otherContext["componentDefs"]) {
-        defs = otherContext["componentDefs"];
-        for (i = 0; i < defs.length; i++) {
-            // there are occasions when defs are just references (descriptor name)
-            if (defs[i]["descriptor"]) {
-                $A.componentService.saveComponentConfig(defs[i]);
+    try {
+        this.globalValueProviders.merge(otherContext["globalValueProviders"]);        
+    } finally {
+        if (otherContext["libraryDefs"]) {
+            defs = otherContext["libraryDefs"];
+            for (i = 0; i < defs.length; i++) {
+                $A.componentService.saveLibraryConfig(defs[i]);
             }
         }
-    }
-
-    if (otherContext["eventDefs"]) {
-        defs = otherContext["eventDefs"];
-        for (i = 0; i < defs.length; i++) {
-            $A.eventService.saveEventConfig(defs[i]);
+    
+        if (otherContext["componentDefs"]) {
+            defs = otherContext["componentDefs"];
+            for (i = 0; i < defs.length; i++) {
+                // there are occasions when defs are just references (descriptor name)
+                if (defs[i]["descriptor"]) {
+                    $A.componentService.saveComponentConfig(defs[i]);
+                }
+            }
         }
-    }
+    
+        if (otherContext["eventDefs"]) {
+            defs = otherContext["eventDefs"];
+            for (i = 0; i < defs.length; i++) {
+                $A.eventService.saveEventConfig(defs[i]);
+            }
+        }
 
-    this.joinComponentConfigs(otherContext["components"], ""+this.getNum());
-    this.joinLoaded(otherContext["loaded"]);
+        if (otherContext["moduleDefs"]) {
+            $A.componentService.initModuleDefs(otherContext["moduleDefs"]);
+        }
+    
+        this.joinComponentConfigs(otherContext["components"], ""+this.getNum());
+        this.joinLoaded(otherContext["loaded"]);
+    }
 };
 
 /**

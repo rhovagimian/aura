@@ -17,6 +17,7 @@ package org.auraframework.impl.root;
 
 import org.auraframework.def.AttributeDef;
 import org.auraframework.def.DefDescriptor;
+import org.auraframework.def.DefDescriptor.DefType;
 import org.auraframework.def.RegisterEventDef;
 import org.auraframework.def.RootDefinition;
 import org.auraframework.def.RootDefinition.SupportLevel;
@@ -32,12 +33,14 @@ import java.lang.reflect.Method;
 import java.util.Map;
 
 public abstract class RootDefinitionTest<T extends RootDefinition> extends DefinitionTest<T> {
-    private final Class<T> defClass;
+    protected final Class<T> defClass;
+    protected final DefType defType;
     protected final String baseTag;
 
     public RootDefinitionTest(Class<T> defClass, String tag) {
         this.defClass = defClass;
         this.baseTag = "<" + tag + " %s>%s</" + tag + ">";
+        this.defType = DefType.getDefType(defClass);
     }
 
     protected Class<T> getDefClass() {
@@ -184,16 +187,16 @@ public abstract class RootDefinitionTest<T extends RootDefinition> extends Defin
     /**
      * Test method for {@link RootDefinition#getAttributeDefs()}.
      */
-    @Test
-    public void testGetAttributeDefs() throws Exception {
-        String att1 = "<aura:attribute name=\"att1\" type=\"String\"/>";
-        String att2 = "<aura:attribute name=\"att2\" type=\"String\"/>";
-        T def = define(baseTag, "", att1 + att2);
-        Map<DefDescriptor<AttributeDef>, AttributeDef> attMap = def.getAttributeDefs();
+    //@Test
+    //public void testGetAttributeDefs() throws Exception {
+        //String att1 = "<aura:attribute name=\"att1\" type=\"String\"/>";
+        //String att2 = "<aura:attribute name=\"att2\" type=\"String\"/>";
+        //T def = define(baseTag, "", att1 + att2);
+        //Map<DefDescriptor<AttributeDef>, AttributeDef> attMap = def.getAttributeDefs();
 
         // should inherit aura:component body attribute as well as added attributes
         //assertEquals("Wrong number of AttributeDefs", 4, attMap.size());
-    }
+    //}
 
     /**
      * Test method for {@link RootDefinition#getAttributeDef(java.lang.String)}.

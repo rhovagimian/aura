@@ -126,7 +126,7 @@ public class ClientOutOfSyncUITest extends WebDriverTestCase {
             }
         }, "Page failed to refresh after server action triggered.");
         getAuraUITestingUtil().waitForDocumentReady();
-        waitForAuraFrameworkReady();
+        getAuraUITestingUtil().waitForAuraFrameworkReady(getAuraErrorsExpectedDuringInit());
     }
 
     @Test
@@ -301,24 +301,6 @@ public class ClientOutOfSyncUITest extends WebDriverTestCase {
         // Firefox caches the response so we need to manually include a nonce to effect a reload
         openNoAura(url + "?nonce=" + System.nanoTime());
         getAuraUITestingUtil().waitForElementText(By.cssSelector("body"), "secret", true);
-    }
-
-    @Test
-    public void testGetClientRenderingAfterDependencyChange() throws Exception {
-        DefDescriptor<?> depDesc = addSourceAutoCleanup(ComponentDef.class,
-                String.format(baseComponentTag, "", "<aura:attribute name='val' type='String' default='initial'/>"));
-        DefDescriptor<ComponentDef> cmpDesc = addSourceAutoCleanup(
-                ComponentDef.class,
-                String.format(baseComponentTag, "render='client'",
-                        String.format("<aura:dependency resource='%s'/>", depDesc.getQualifiedName())));
-        open(cmpDesc);
-        assertEquals("initial", getAuraUITestingUtil().getEval(String.format(
-                "return $A.componentService.newComponent('%s').get('v.val');", depDesc.getDescriptorName())));
-        updateStringSource(depDesc,
-                String.format(baseComponentTag, "", "<aura:attribute name='val' type='String' default='final'/>"));
-        open(cmpDesc);
-        assertEquals("final", getAuraUITestingUtil().getEval(String.format(
-                "return $A.componentService.newComponent('%s').get('v.val');", depDesc.getDescriptorName())));
     }
 
     @Test

@@ -21,11 +21,12 @@ import org.auraframework.def.AttributeDefRef;
 import org.auraframework.def.ComponentDef;
 import org.auraframework.def.ComponentDefRef;
 import org.auraframework.def.DefDescriptor;
+import org.auraframework.def.DefinitionReference;
 import org.auraframework.impl.AuraImplTestCase;
 import org.auraframework.impl.root.component.ComponentDefRefImpl;
-import org.auraframework.impl.root.parser.XMLParser;
+import org.auraframework.impl.factory.XMLParser;
+import org.auraframework.impl.source.StringSource;
 import org.auraframework.system.Parser.Format;
-import org.auraframework.test.source.StringSource;
 import org.junit.Test;
 
 import javax.inject.Inject;
@@ -60,6 +61,7 @@ public class HTMLComponentDefRefHandlerTest extends AuraImplTestCase {
     public void testHandleChildText() throws Exception {
         xmlReader.next();
         htmlHandler.handleChildText();
+        htmlHandler.finishDefinition();
         ArrayList<ComponentDefRefImpl> compDefs = (ArrayList<ComponentDefRefImpl>) htmlHandler.createDefinition()
                 .getAttributeDefRef("body").getValue();
         AttributeDefRef attDef = compDefs.get(0).getAttributeDefRef("value");
@@ -72,7 +74,8 @@ public class HTMLComponentDefRefHandlerTest extends AuraImplTestCase {
         xmlReader.next();
         xmlReader.next();
         htmlHandler.handleChildTag();
-        ArrayList<ComponentDefRefImpl> cd = (ArrayList<ComponentDefRefImpl>) htmlHandler.createDefinition()
+        htmlHandler.finishDefinition();
+        ArrayList<DefinitionReference> cd = (ArrayList<DefinitionReference>) htmlHandler.createDefinition()
                 .getAttributeDefRef("body").getValue();
         assertEquals(1, cd.size());
         assertEquals("br", cd.get(0).getAttributeDefRef("tag").getValue());
@@ -125,7 +128,7 @@ public class HTMLComponentDefRefHandlerTest extends AuraImplTestCase {
     public void testCreateDefinition() throws Exception {
         ComponentDefRef cd = htmlHandler.createDefinition();
         assertEquals("html", cd.getDescriptor().getName());
-        assertEquals(2, cd.getAttributeValues().size());
+        assertEquals(2, cd. getAttributeValues().size());
         assertEquals("div", cd.getAttributeDefRef("tag").getValue());
     }
 

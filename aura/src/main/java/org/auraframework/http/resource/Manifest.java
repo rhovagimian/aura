@@ -52,7 +52,6 @@ public class Manifest extends AuraResourceImpl {
 
     // FIXME: this is horrendous we actually render the manifest as a component.
     private RenderingService renderingService;
-    private ContextService contextService;
     private ManifestUtil manifestUtil;
 
     public Manifest() {
@@ -190,14 +189,14 @@ public class Manifest extends AuraResourceImpl {
                 }
             }
 
-            // Add token for bootstrap.js requests
-            // because those requests are issued from script tags in app-cached files
-            String token = configAdapter.generateJwtToken();
-            if (token != null) {
-                sw.write("# bootstrap token: ");
-                sw.write(token);
-                sw.write('\n');
-            }
+			// Add token for bootstrap.js requests
+			// because those requests are issued from script tags in app-cached files
+			String token = configAdapter.generateJwtToken();
+			if (token != null) {
+				sw.write("# bootstrap token: ");
+				sw.write(token);
+				sw.write('\n');
+			}
 
             attribs.put(RESOURCE_URLS, sw.toString());
 
@@ -244,11 +243,6 @@ public class Manifest extends AuraResourceImpl {
     @Inject
     public void setRenderingService(RenderingService renderingService) {
         this.renderingService = renderingService;
-    }
-
-    @Inject
-    public void setContextService(ContextService contextService) {
-        this.contextService = contextService;
     }
 
     public void setManifestUtil(ManifestUtil manifestUtil) {

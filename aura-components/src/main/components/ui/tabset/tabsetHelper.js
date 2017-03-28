@@ -49,7 +49,7 @@
      * @param {Object} tab The configuration for the new tab. If the "componentDef" is not defined, "ui:tab" is used.
      */
     addTab: function (cmp, index, tab, callback, name) {
-        var self = this, size = cmp._tabCollection.getSize();
+        var size = cmp._tabCollection.getSize();
         if ($A.util.isUndefined(index) || index < 0 || index > size) {
             index = size;
         }
@@ -63,7 +63,7 @@
                 "index": index,
                 "active": active,
                 "name": name,
-                "tab": self.getTabItemConfig(cmp, newTab)
+                "tab": this.getTabItemConfig(cmp, newTab)
             }).setComponentEvent().fire();
             if (newTab.get("v.active")) {
                 this.setActiveTabBody(cmp, {"index": index, "tab": newTab, "active": true});
@@ -71,7 +71,7 @@
             if ($A.util.isFunction(callback)) {
                 callback({"tab": newTab});
             }
-        });
+        }.bind(this));
     },
     /**
      * Update existing tab
@@ -181,6 +181,7 @@
      */
     removeTabBody: function (cmp, index) {
         var tabToRemove = cmp._tabCollection.getTab(index);
+        var tabName = tabToRemove&&tabToRemove.get("v.name");
         var activeIndex = cmp._tabCollection.getTabIndex({"tab": cmp._activeTab});
         cmp._tabCollection.removeTab(index);
         var size = cmp._tabCollection.getSize();
@@ -192,9 +193,8 @@
         // Fire remove event if the tab is removed via the removeTab event or if the tab is closed
         if (tabToRemove) {
             var attrs = { "index": index };
-            var name = tabToRemove.get("v.name");
-            if (name) {
-                attrs["name"] = name;
+            if (tabName) {
+                attrs["name"] = tabName;
             }
             cmp.get("e.onRemove").setComponentEvent().fire(attrs);
         }
@@ -253,7 +253,7 @@
                 }
             }
             count++;
-        };
+        }.bind(this);
         for (var i = 0; i < tabConfigs.length; i++) {
             this.createTabComponent(cmp, tabConfigs[i], callback);
         }
@@ -306,23 +306,21 @@
      * @private
      */
     createTabComponent: function (cmp, tabConfig, callback) {
-        // TODO: Use createComponent in here instead
-
         var cd, config;
         if (!$A.util.isObject(tabConfig)) {
             return;
         }
-        if (tabConfig.componentDef) {
-            cd = tabConfig.componentDef;
-            delete tabConfig.componentDef;
+        if (tabConfig.componentDef || tabConfig.descriptor) {
+            cd = tabConfig.componentDef || tabConfig.descriptor;
         } else {
             cd = this.CONSTANTS.TAB_DEF;
         }
         if (!tabConfig.body) {
             tabConfig.body = [];
         }
-        config = {"componentDef": cd, attributes: {values: tabConfig}};
-        $A.componentService.newComponentAsync(this, callback, config, cmp);
+        config = {"descriptor": cd, attributes: tabConfig};
+        var tab = $A.createComponentFromConfig(config);
+        callback(tab);
     },
     /**
      * @private
@@ -349,8 +347,8 @@
         }
 
         config.localId = 'tabItem';
-        config.attributes = { "values": values };
-        config.componentDef = tabItemDef;
+        config.attributes = values;
+        config.descriptor = tabItemDef;
         config.valueProvider = cmp;
 
         return config;
@@ -443,8 +441,8 @@
             removeTab: function (index) {
                 if ($A.util.isNumber(index) && index >= 0 && index < this.tabIds.length) {
                     var id = this.tabIds.splice(index, 1);
-                    var tab = this.tabComponents[id[0]];
-                    tab.destroy(true);
+                    this.tabComponents[id[0]].destroy();
+                    delete this.tabComponents[id[0]];
                 }
             },
             insertTab: function (index, tab) {

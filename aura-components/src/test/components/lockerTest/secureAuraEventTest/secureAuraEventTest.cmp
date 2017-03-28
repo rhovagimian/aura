@@ -20,10 +20,12 @@
 
     <div>SecureAuraEvent test</div>
 
-    <aura:method name="testGetEventSourceReturnsSecureComponent" action="{!c.testGetEventSourceReturnsSecureComponent}"/>
-    <aura:method name="testExerciseEventAPIs" action="{!c.testExerciseEventAPIs}"/>
+    <aura:method name="testGetEventSourceReturnsSecureComponent" />
+    <aura:method name="testExerciseEventAPIs" />
+    <aura:method name="testGetType" />
+    <aura:method name="testGetEventType" />
+
     <ui:button label="press event" aura:id="button" press="c.testGetSourceReturnsSecureComponentRefWhenNoAccess"/>
 
     <aura:registerevent name="debugLog" type="aura:debugLog"/>
-
 </aura:component>

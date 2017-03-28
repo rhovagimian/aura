@@ -40,10 +40,20 @@
         var obj = component.get("v.wrapUnwrapTestObj");
         testUtils.assertEquals("Value 1", obj.value1, "Unexpected value after object has been wrapped/unwrapped in SecureObject");
         testUtils.assertEquals("Value 2", obj.sub.value2, "Unexpected nested value after object has been wrapped/unwrapped in SecureObject");
+        //wrapUnwrapFacet sets an additional property on the object. Ensure its still there
+        testUtils.assertEquals("Value 3", obj.value3, "Unexpected nested value after object has been wrapped/unwrapped in SecureObject");
+
     },
 
     setWrapUnwrapObject: function(component) {
         component.find("wrapUnwrapFacet").setValues();
+    },
+
+    verifyInputBindingToNewPropOnBackingObject: function(component) {
+        var testUtils = component.get("v.testUtils");
+        component.find("wrapUnwrapFacet").setValues();
+        var obj = component.get("v.wrapUnwrapTestObj");
+        testUtils.assertEquals("input value 1", obj.inputValue1, "Unexpected value after object has been wrapped/unwrapped in SecureObject");
     },
 
     testMethodWithParams: function(component) {
@@ -73,5 +83,14 @@
         var textEncoder = new TextEncoder("UTF-8");
         testUtils.assertEquals("utf-8", textEncoder.encoding, "Unexpected encoding property from constructed TextEncoder");
         testUtils.assertDefined(textEncoder.encode, "Expected static method 'encode' to be defined on constructed TextEncoder");
+    },
+
+    testUnfilteringOfArrayBuffer: function(component) {
+        var testUtils = component.get("v.testUtils");
+        // pass in a special "TypedArray" as a param and verify Locker properly unfilters it (by letting it pass through)
+        var uint8Array = new Uint8Array(16);
+        crypto.getRandomValues(uint8Array);
+        var valuesChanged = uint8Array[0] !== 0 || uint8Array[1] !== 0 || uint8Array[2] !== 0;
+        testUtils.assertTrue(valuesChanged, "Uint8Array not populated with values after calling Crypto.getRandomValues");
     }
 })

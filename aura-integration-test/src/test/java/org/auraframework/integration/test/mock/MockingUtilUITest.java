@@ -25,9 +25,9 @@ import org.auraframework.def.ControllerDef;
 import org.auraframework.def.DefDescriptor;
 import org.auraframework.def.ModelDef;
 import org.auraframework.ds.servicecomponent.Controller;
-import org.auraframework.impl.parser.ParserFactory;
 import org.auraframework.impl.test.mock.MockingUtil;
 import org.auraframework.integration.test.util.WebDriverTestCase;
+import org.auraframework.service.CompilerService;
 import org.auraframework.system.Annotations.AuraEnabled;
 import org.auraframework.system.AuraContext.Authentication;
 import org.auraframework.system.AuraContext.Format;
@@ -47,12 +47,12 @@ public class MockingUtilUITest extends WebDriverTestCase {
     private MockingUtil mockingUtil;
 
     @Inject
-    private ParserFactory parserFactory;
+    private CompilerService compilerService;
 
     @Override
     public void setUp() throws Exception {
         super.setUp();
-        mockingUtil = new MockingUtil(testContextAdapter, definitionService, parserFactory);
+        mockingUtil = new MockingUtil(testContextAdapter, definitionService, compilerService);
     }
 
     @Override
@@ -73,7 +73,8 @@ public class MockingUtilUITest extends WebDriverTestCase {
                         "{!m.string}<aura:iteration items='{!m.stringList}' var='i'>{!i}</aura:iteration>"));
         // sanity without mocks
         open(appDescriptor);
-        assertEquals("Modelonetwothree", getText(By.cssSelector("body")));
+        String actual = getText(By.cssSelector("body"));
+        assertEquals("Modelonetwothree", actual);
     }
 
     @Ignore
@@ -214,7 +215,7 @@ public class MockingUtilUITest extends WebDriverTestCase {
         open(cmpDefDescriptor);
         assertEquals("", getText(By.cssSelector("div.result")));
         findDomElement(By.cssSelector("button.button")).click();
-        waitForElementTextPresent(findDomElement(By.cssSelector("div.result")), "not so interesting");
+        getAuraUITestingUtil().waitForElementText(By.cssSelector("div.result"), "not so interesting", true);
     }
 
     @Ignore

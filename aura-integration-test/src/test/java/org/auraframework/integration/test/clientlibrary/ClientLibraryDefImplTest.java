@@ -31,13 +31,13 @@ import org.auraframework.def.ComponentDef;
 import org.auraframework.def.DefDescriptor;
 import org.auraframework.impl.AuraImplTestCase;
 import org.auraframework.impl.clientlibrary.ClientLibraryDefImpl;
-import org.auraframework.impl.root.parser.XMLParser;
+import org.auraframework.impl.factory.XMLParser;
 import org.auraframework.impl.root.parser.handler.ClientLibraryDefHandler;
 import org.auraframework.impl.root.parser.handler.ComponentDefHandler;
+import org.auraframework.impl.source.StringSource;
 import org.auraframework.system.AuraContext;
 import org.auraframework.system.AuraContext.Mode;
 import org.auraframework.system.Parser.Format;
-import org.auraframework.test.source.StringSource;
 import org.auraframework.throwable.quickfix.InvalidDefinitionException;
 import org.junit.Test;
 

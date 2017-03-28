@@ -21,6 +21,7 @@ import org.auraframework.def.design.DesignAttributeDef;
 import org.auraframework.def.design.DesignDef;
 import org.auraframework.def.design.DesignTemplateDef;
 import org.auraframework.def.design.DesignTemplateRegionDef;
+import org.auraframework.def.module.ModuleDef;
 import org.auraframework.throwable.AuraRuntimeException;
 import org.auraframework.throwable.quickfix.QuickFixException;
 import org.auraframework.util.json.JsonSerializable;
@@ -148,12 +149,15 @@ public interface DefDescriptor<T extends Definition> extends JsonSerializable,
         TESTCASE(TestCaseDef.class), //
         PROVIDER(ProviderDef.class), //
         REQUIRED_VERSION(RequiredVersionDef.class), //
-        RESOURCE(ResourceDef.class),
         DESIGN(DesignDef.class),
         ATTRIBUTE_DESIGN(DesignAttributeDef.class),
         DESIGN_TEMPLATE(DesignTemplateDef.class),
         DESIGN_TEMPLATE_REGION(DesignTemplateRegionDef.class),
         SVG(SVGDef.class),
+
+        /* TODO: MODULE */
+        MODULE(ModuleDef.class),
+
         REGISTEREVENT(RegisterEventDef.class);
         private static Map<Class<? extends Definition>, DefType> defTypeMap;
 

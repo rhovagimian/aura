@@ -21,7 +21,6 @@ import org.auraframework.adapter.DefinitionParserAdapter;
 import org.auraframework.def.AttributeDef;
 import org.auraframework.def.AttributeDefRef;
 import org.auraframework.def.BaseComponentDef;
-import org.auraframework.def.BaseComponentDef.WhitespaceBehavior;
 import org.auraframework.def.ComponentDef;
 import org.auraframework.def.ControllerDef;
 import org.auraframework.def.DefDescriptor;
@@ -91,7 +90,6 @@ public abstract class BaseComponentDefImplUnitTest<I extends BaseComponentDefImp
     protected List<AttributeDefRef> facets;
     protected Set<PropertyReference> expressionRefs;
     protected String render;
-    protected WhitespaceBehavior whitespaceBehavior;
     protected List<DependencyDef> dependencies;
     @Mock
     protected DefDescriptor<ControllerDef> mockControllerDesc;
@@ -132,7 +130,7 @@ public abstract class BaseComponentDefImplUnitTest<I extends BaseComponentDefImp
     
     //test for W-2798390
     @SuppressWarnings("unchecked")
-	@Override
+    @Override
     @Test
     public void testValidateDefinition() throws Exception {
         //set up controllerDescriptors here to make sure we don't check it when validating definition
@@ -221,18 +219,21 @@ public abstract class BaseComponentDefImplUnitTest<I extends BaseComponentDefImp
         builder.modelDefDescriptor = this.modelDefDescriptor;
         builder.extendsDescriptor = this.extendsDescriptor;
         builder.templateDefDescriptor = this.templateDefDescriptor;
-        builder.styleDescriptor = this.styleDescriptor;
+        //builder.styleDescriptor = this.styleDescriptor;
         builder.rendererDescriptors = this.rendererDescriptors;
         builder.helperDescriptors = this.helperDescriptors;
         builder.interfaces = this.interfaces;
         builder.controllerDescriptors = this.controllerDescriptors;
         builder.events = this.events;
         builder.eventHandlers = this.eventHandlers;
-        builder.imports = this.imports;
+        if (this.imports != null) {
+            for (LibraryDefRef importLibrary : this.imports) {
+                builder.addLibraryImport(importLibrary);
+            }
+        }
         builder.facets = this.facets;
         builder.expressionRefs = this.expressionRefs;
         builder.render = this.render;
-        builder.setWhitespaceBehavior(this.whitespaceBehavior);
         builder.dependencies = this.dependencies;
         return super.buildDefinition(builder);
     }

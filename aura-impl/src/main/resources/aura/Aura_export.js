@@ -21,6 +21,7 @@ AuraInstance.prototype["error"] = AuraInstance.prototype.error;
 AuraInstance.prototype["warning"] = AuraInstance.prototype.warning;
 AuraInstance.prototype["message"] = AuraInstance.prototype.message;
 AuraInstance.prototype["enqueueAction"] = AuraInstance.prototype.enqueueAction;
+AuraInstance.prototype["executeHotspot"] = AuraInstance.prototype.executeHotspot;
 AuraInstance.prototype["deferAction"] = AuraInstance.prototype.deferAction;
 AuraInstance.prototype["get"] = AuraInstance.prototype.get;
 AuraInstance.prototype["getReference"] = AuraInstance.prototype.getReference;
@@ -99,6 +100,15 @@ Aura.OverrideMap = function OverrideMap() {
             },
             function(orig) {
                 $A.clientService.send = orig;
+            }
+        ),
+
+        "ClientService.collectServerAction" : new Aura.Utils.Override($A.clientService, $A.clientService.collectServerAction, false,
+            function(bound) {
+                $A.clientService.collectServerAction = bound;
+            },
+            function(orig) {
+                $A.clientService.collectServerAction = orig;
             }
         ),
 
@@ -238,6 +248,16 @@ Aura.OverrideMap = function OverrideMap() {
             },
             function(orig) {
                 $A.metricsService.transaction = orig;
+            }
+        ),
+        
+        "HtmlComopnent.dispatchAction" : new Aura.Utils.Override(null, Aura.Component.HtmlComponent.prototype["helper"].dispatchAction,
+            true,
+            function(bound) {
+                HtmlComponent.prototype["helper"].dispatchAction = bound;
+            },
+            function(orig) {
+                HtmlComponent.prototype["helper"].dispatchAction = orig;
             }
         )
     };

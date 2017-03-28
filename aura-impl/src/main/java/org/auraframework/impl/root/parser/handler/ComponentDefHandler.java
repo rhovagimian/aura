@@ -20,14 +20,16 @@ import org.auraframework.adapter.ConfigAdapter;
 import org.auraframework.adapter.DefinitionParserAdapter;
 import org.auraframework.def.ComponentDef;
 import org.auraframework.def.DefDescriptor;
+import org.auraframework.def.StyleDef;
 import org.auraframework.impl.root.component.ComponentDefImpl;
 import org.auraframework.service.ContextService;
 import org.auraframework.service.DefinitionService;
-import org.auraframework.system.Source;
+import org.auraframework.system.TextSource;
 import org.auraframework.throwable.quickfix.QuickFixException;
 
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
+
 import java.util.Set;
 
 /**
@@ -51,16 +53,11 @@ public class ComponentDefHandler extends BaseComponentDefHandler<ComponentDef, C
         super();
     }
 
-    public ComponentDefHandler(DefDescriptor<ComponentDef> componentDefDescriptor, Source<?> source,
+    public ComponentDefHandler(DefDescriptor<ComponentDef> componentDefDescriptor, TextSource<?> source,
                                XMLStreamReader xmlReader, boolean isInInternalNamespace, DefinitionService definitionService,
                                ContextService contextService,
                                ConfigAdapter configAdapter, DefinitionParserAdapter definitionParserAdapter) {
-        super(componentDefDescriptor, source, xmlReader, isInInternalNamespace, definitionService, contextService, configAdapter, definitionParserAdapter);
-    }
-
-    @Override
-    protected ComponentDefImpl.Builder createBuilder() {
-        return new ComponentDefImpl.Builder();
+        super(componentDefDescriptor, source, xmlReader, isInInternalNamespace, definitionService, contextService, configAdapter, definitionParserAdapter, new ComponentDefImpl.Builder());
     }
 
     @Override
@@ -73,10 +70,31 @@ public class ComponentDefHandler extends BaseComponentDefHandler<ComponentDef, C
         return isInInternalNamespace ? INTERNAL_ALLOWED_ATTRIBUTES : ALLOWED_ATTRIBUTES;
     }
 
+    public interface TemplateCallback {
+        public void callback(boolean isTemplate) throws QuickFixException;
+    }
+
+    private TemplateCallback tc = null;
+
+    public void setTemplateCallback(TemplateCallback tc) {
+        this.tc = tc;
+    }
+
     @Override
     protected void readAttributes() throws QuickFixException {
+        boolean isTemplate = getBooleanAttributeValue(ATTRIBUTE_ISTEMPLATE);
+        builder.isTemplate = isTemplate;
+        if (tc != null) {
+            tc.callback(isTemplate);
+        }
+        if (isTemplate) {
+            // UGLY: Fix up template style.
+            StyleDef styleDef = getBundledDef(StyleDef.class, "templateCss");
+            if (styleDef != null) {
+                builder.setStyleDef(styleDef);
+            }
+        }
         super.readAttributes();
-        builder.isTemplate = getBooleanAttributeValue(ATTRIBUTE_ISTEMPLATE);
     }
 
     @Override

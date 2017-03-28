@@ -25,13 +25,14 @@
  * @constructor
  * @protected
  */
-function AttributeSet(attributes, attributeDefSet) {
+function AttributeSet(attributeDefSet) {
 	this.values = {};
     this.shadowValues={};
     this.decorators={};
 	this.attributeDefSet = attributeDefSet;
+	this.destroyed=false;
 
-	this.initialize(attributes);
+	//this.initialize(attributes);
 
 	// #if {"excludeModes" : ["PRODUCTION", "PRODUCTIONDEBUG"]}
 	this["values"] = this.values;
@@ -96,10 +97,11 @@ AttributeSet.prototype.get = function(key, component) {
         var context=$A.getContext();
         var contextCmp = context && context.getCurrentAccess();
         var message="Access Check Failed! AttributeSet.get(): attribute '"+attribute+"' of component '"+component+"' is not visible to '"+contextCmp+"'.";
-        var ae = new $A.auraError(message);
-        ae.component = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
         if(context.enableAccessChecks){
             if(context.logAccessFailures){
+                var ae = new $A.auraError(message);
+                ae["component"] = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
+                ae["componentStack"] = context && context.getAccessStackHierarchy();
                 $A.error(null, ae);
             }
             return undefined;
@@ -129,6 +131,66 @@ AttributeSet.prototype.get = function(key, component) {
         }
     } else {
         value = aura.expressionService.resolve(key, this.values);
+    }
+
+    if (aura.util.isExpression(value)) {
+        value = value.evaluate();
+    }
+
+    if(this.shadowValues.hasOwnProperty(key)) {
+        value += this.getShadowValue(key);
+    }
+
+    return value;
+};
+
+/**
+ * simplified version of component.get('v.body'),
+ * only supposed to be used by simple components.
+ * 
+ * @private
+ *
+ */
+AttributeSet.prototype.getBody = function(globalId) {
+    var key = "body."+globalId;
+    var value = this.values["body"][globalId];
+
+    if (aura.util.isExpression(value)) {
+        value = value.evaluate();
+    }
+
+    if(this.shadowValues.hasOwnProperty(key)) {
+        value += this.getShadowValue(key);
+    }
+
+    return value;
+};
+
+/**
+ * simplified version of component.get('v.key'),
+ * only supposed to be used by simple components.
+ *
+ * @private
+ *
+ */
+AttributeSet.prototype.getValue = function(key) {
+    var value = undefined;
+    var decorators=this.decorators[key];
+    if(decorators&&decorators.length){
+        if(decorators.decorating){
+            value=decorators.value;
+        }else{
+            decorators.decorating=true;
+            decorators.value=this.values[key];
+            for(var i=0;i<decorators.length;i++){
+                var decorator=decorators[i];
+                value=decorator.value=decorators[i].evaluate();
+            }
+            decorators.decorating=false;
+            decorators.value=null;
+        }
+    }else{
+        value = this.values[key];
     }
 
     if (aura.util.isExpression(value)) {
@@ -187,10 +249,11 @@ AttributeSet.prototype.set = function(key, value, component) {
         var context=$A.getContext();
         var contextCmp = context && context.getCurrentAccess();
         var message="Access Check Failed! AttributeSet.set(): '"+attribute+"' of component '"+component+"' is not visible to '"+contextCmp+"'.";
-        var ae = new $A.auraError(message);
-        ae.component = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
         if(context.enableAccessChecks){
             if(context.logAccessFailures){
+                var ae = new $A.auraError(message);
+                ae["component"] = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
+                ae["componentStack"] = context && context.getAccessStackHierarchy();
                 $A.error(null, ae);
             }
             return;
@@ -242,30 +305,24 @@ AttributeSet.prototype.set = function(key, value, component) {
     var attrType = defs[0] && defs[0].getTypeDefDescriptor();
     var isFacet = attrType === "aura://Aura.Component[]";
     if(isFacet && value) {
-        var facetValue = value;
+        var facet = value;
+        if(!$A.util.isArray(facet)){
+            facet = [facet];
+        }
         // Change the parentId back pointer for each facet value.
         // Some facetValues are component def objects; ignore these
         // as the parent is irrelevant and its value provider will be
         // "component".
-        if($A.util.isArray(facetValue)) {
-            for(var i = 0; i < value.length; i++) {
-                facetValue = value[i];
-                if(facetValue) {
-                    while (facetValue instanceof PassthroughValue) {
-                        facetValue = facetValue.getComponent();
-                    }
-                    if(facetValue.setContainerComponentId) {
-                        facetValue.setContainerComponentId(component.globalId);
-                    }
+        var facetValue=null;
+        for(var i = 0; i < facet.length; i++) {
+            facetValue = facet[i];
+            if(facetValue) {
+                while (facetValue instanceof PassthroughValue) {
+                    facetValue = facetValue.getComponent();
                 }
-            }
-        }
-        else if(facetValue) {
-            while (facetValue instanceof PassthroughValue) {
-                facetValue = facetValue.getComponent();
-            }
-            if(facetValue.setContainerComponentId) {
-                facetValue.setContainerComponentId(component.globalId);
+                if(facetValue.setContainerComponentId) {
+                    facetValue.setContainerComponentId(component.globalId);
+                }
             }
         }
     }
@@ -418,61 +475,53 @@ AttributeSet.prototype.getDefault = function(name) {
 /**
  * Destroys the attributeset.
  *
- * @param {Boolean}
- *            async - whether to put in our own trashcan
  * @private
  */
-AttributeSet.prototype.destroy = function(async) {
-    var values = this.values;
-    var expressions={};
-    for (var k in values) {
-        var v = values[k];
+AttributeSet.prototype.destroy = function() {
+    var expressions = {};
+    if(!this.destroyed) {
+        var values = this.values;
+        for (var k in values) {
+            var v = values[k];
 
-        // Body is special because it's a map
-        // of bodies for each inheritance level
-        // so we need to do a for( var in ) {} loop
-        if(k === "body") {
-        	for(var globalId in v) {
-                var body = v[globalId];
-                if(body) {
-            		for(var j=0;j<body.length;j++) {
-                        var bodyCmp = body[j];
-                        if (bodyCmp && bodyCmp.destroy) {
-                            bodyCmp.destroy(async);
+            // Body is special because it's a map
+            // of bodies for each inheritance level
+            // so we need to do a for-in loop
+            if (k === "body") {
+                for (var globalId in v) {
+                    var body = v[globalId];
+                    if (body) {
+                        for (var j = 0; j < body.length; j++) {
+                            var bodyCmp = body[j];
+                            if ($A.util.isComponent(bodyCmp) && bodyCmp.autoDestroy()) {
+                                bodyCmp.destroy();
+                            }
                         }
-            		}
+                    }
                 }
-        	}
-        	continue;
-        }
-
-        // KRIS: HALO:
-        // HTML Elements store their attributes in the HTMLAttributes map.
-        // Since we don't go recursively down the attributes we don't clean these.
-        // We should at least destroy them, PRV's still don't release their references.
-        // if(k === "HTMLAttributes") {
-        //     for(var attribute in v) {
-        //         if(v[attribute] && v[attribute].destroy) {
-        //             v[attribute].destroy(async);
-        //         }
-        //     }
-        // }
-
-        if(!$A.util.isArray(v)){
-            v=[v];
-        }
-
-        for(var i=0,value;i<v.length;i++){
-            value = v[i];
-            if($A.util.isExpression(value)){
-                expressions[k]=value;
-            } else if ($A.util.isComponent(value)) {
-                value.destroy(async);
+                continue;
             }
-        }
-    }
 
-    this.values = this.attributeDefSet = undefined;
+            if ($A.util.isArray(v)) {
+                for (var i = 0, value; i < v.length; i++) {
+                    value = v[i];
+                    if ($A.util.isExpression(value)) {
+                        expressions[k] = value;
+                    } else if ($A.util.isComponent(value) && value.autoDestroy()) {
+                        value.destroy();
+                    }
+                }
+            } else {
+                if ($A.util.isExpression(v)) {
+                    expressions[k] = v;
+                } else if ($A.util.isComponent(v) && v.autoDestroy()) {
+                    v.destroy();
+                }
+            }
+            values[k] = undefined;
+        }
+        this.destroyed = true;
+    }
     return expressions;
 };
 

@@ -193,25 +193,36 @@
 
     handleDataChange: function (component, event) {
         var concreteCmp = component.getConcreteComponent();
-        // Refactor this component:
-        // We want to update the internal v.items, but without udating iteration just yet
-        // since customer might have thir own matchText function
-        concreteCmp.set("v.items", event.getParam("data"), true/*ignore changes, dont notify*/);
-
-        this.matchText(concreteCmp, event.getParam("data"));
+        var newItems = event.getParam("data");
+        // Users of the component that implement their own v.matchFunc rely on this being set.
+        concreteCmp.set("v.items", newItems);
+        if (concreteCmp.get("v.disableMatch") === true) {
+            for (var j = 0; j < newItems.length; j++) {
+                newItems[j].visible = true;
+            }
+            this.matchFuncDone(concreteCmp, newItems);
+        } else {
+            this.matchText(concreteCmp, newItems);
+        }
     },
 
     handleListHighlight: function (component, event) {
         var selectedSection = this.createKeyboardTraversalList(component);
+        
         if (selectedSection) {
-            var direction = event.getParam("activeIndex");
-            selectedSection.deselect();
-            if (direction < 0) { // highlight previous visible option
-                selectedSection = selectedSection.decrement();
-            } else { // highlight next visible option
-                selectedSection = selectedSection.increment();
+            if(event.getParam("activeOption")) {
+                selectedSection.deselect();
+                event.getParam("activeOption").set("v.highlighted", true);
+            } else {
+                var direction = event.getParam("activeIndex");
+                selectedSection.deselect();
+                if (direction < 0) { // highlight previous visible option
+                    selectedSection = selectedSection.decrement();
+                } else { // highlight next visible option
+                    selectedSection = selectedSection.increment();
+                }
+                selectedSection.select(component);
             }
-            selectedSection.select(component);
         }
     },
 
@@ -230,8 +241,12 @@
             return null;
         }
         itemsSection.iters = iterCmp.get("v.body");
+
+        // original index points to the currently highlighted item or -1 if we're not in item list
+        // highlightedIndex is used to determine the next item to highlight during traversal
         itemsSection.originalIndex = itemsSection.highlightedIndex = this.findHighlightedOptionIndex(itemsSection.iters);
         itemsSection.previous = itemsSection.next = topSection = bottomSection = itemsSection;
+        // if highlightedIndex is not -1, we're inside the item list
         if (itemsSection.highlightedIndex > -1) {
             selectedSection = itemsSection;
         }
@@ -288,6 +303,9 @@
         return selectedSection;
     },
 
+    /**
+     * Creates a basic linked list node for list traversal.
+     */
     _createBasicKeyboardTraversalSection: function () {
         return {
             increment: function () {
@@ -309,37 +327,65 @@
         };
     },
 
+    /**
+     * Creates a linked list node for the item section. For the header and footer,
+     * we use _createBasicKeyboardTraversalSection.
+     */
     _createKeyboardTraversalItemsSection: function (cmp) {
         var self = this;
         return {
-            visited : false,
+            // Counts how many times we have traversed the item section in increment/decrement.
+            // We should only visit the item Section for as many times as the number of items - 1
+            // (- 1 to not include original index).
+            // Since we're using recursion here and we need to wrap around the list when there's
+            // no header or footer, using a count is the most straightforward way to prevent infinite loop.
+            traversalCount: 0,
+
+            // select the next selectable item
+            // if go past the last item, go to the next selectable section (header/footer)
+            // if no selectale section, wrap around to the top and continue traversal
             increment: function () {
                 var resultSection = this;
-                if (!this.visited || this.highlightedIndex+1 <= this.originalIndex ) { //avoid infinite looping
-                    this.highlightedIndex++;
-                    if (this.highlightedIndex >= this.iters.length) {
+                var itemList = this.iters;
+
+                this.highlightedIndex++;
+
+                this.traversalCount++; // ++ before the check to loop only num of items-1 times
+                if (this.traversalCount < itemList.length && this.highlightedIndex !== this.originalIndex) { 
+                    // reached bottom
+                    if (this.highlightedIndex >= itemList.length) {
                         this.highlightedIndex = -1;
-                        this.visited = true;
+                        // go to the next section; if not exists, it'll recurse to wrap around the list
                         resultSection = this.next.incrementedTo();
-                    } else if (!this.iters[this.highlightedIndex].get("v.visible")) {
+                    // go to the current item if selectable
+                    } else if (!itemList[this.highlightedIndex].get("v.visible")) {
                         resultSection = this.incrementedTo();
                     }
                 }
                 return resultSection;
             },
 
+            // select the previous selectable item
+            // if go past the first item, go to the previous selectable section (header/footer)
+            // if no selectale section, wrap around to the bottom and continue traversal
             decrement: function () {
                 var resultSection = this;
-                if (!this.visited || this.highlightedIndex-1 >= this.originalIndex ) { //avoid infinite looping
-                    if (this.highlightedIndex === -1) {
-                        this.highlightedIndex = this.iters.length;
-                    }
-                    this.highlightedIndex--;
+                var itemList = this.iters;
+
+                if (this.highlightedIndex < 0) {
+                    this.highlightedIndex = itemList.length;
+                }
+                this.highlightedIndex--;
+
+                this.traversalCount++; // ++ before the check to loop only num of items-1 times
+                if (this.traversalCount < itemList.length && this.highlightedIndex !== this.originalIndex) {
+                    // reached top
                     if (this.highlightedIndex < 0) {
                         this.highlightedIndex = -1;
-                        this.visited = true;
+                        // go to the previous section; if not exists, it'll recurse to wrap around the list
                         resultSection = this.previous.decrementedTo();
-                    } else if (!this.iters[this.highlightedIndex].get("v.visible")) {
+                    // go to the current item if selectable
+                    } else if (!itemList[this.highlightedIndex].get("v.visible")) {
                         resultSection = this.decrementedTo();
                     }
                 }
@@ -361,23 +407,34 @@
             },
 
             select: function () {
-                if (this.highlightedIndex === -1) { //nothing selected
-                    return;
+                if (this.highlightedIndex < 0 || this.highlightedIndex >= this.iters.length) {
+                    return; // nothing selected
                 }
                 var highlightedCmp = this.iters[this.highlightedIndex];
                 highlightedCmp.set("v.highlighted", true);
                 var highlightedElement = highlightedCmp.getElement();
-                if (highlightedElement) {
-                    if (highlightedElement.scrollIntoViewIfNeeded) {
-                        highlightedElement.scrollIntoViewIfNeeded();
-                    } else {
-                        highlightedElement.scrollIntoView(false);
-                    }
-                }
+                self.scrollIntoViewIfNeeded(highlightedElement);
                 self.updateAriaAttributes(cmp, highlightedCmp);
             }
 
         };
+    },
+
+    scrollIntoViewIfNeeded: function(element) {
+        if (element) {
+            if (element.scrollIntoViewIfNeeded) {
+                element.scrollIntoViewIfNeeded();
+            } else {
+                if (!this.isInViewport(element)) {
+                    element.scrollIntoView(false);
+                }
+            }
+        }
+    },
+
+    isInViewport: function(element) {
+        var rect = element.getBoundingClientRect();
+        return (rect.top >= 0 && rect.bottom <= window.innerHeight);
     },
 
     addHeaderAndFooterClassesAndAttributes: function (component) {
@@ -480,14 +537,11 @@
         items = items || component.get('v.items');
         var keyword = component.get("v.keyword");
         var propertyToMatch = component.get("v.propertyToMatch");
-        var regex;
         try {
-            regex = new RegExp(keyword, "i");
             for (var j = 0; j < items.length; j++) {
                 items[j].keyword = keyword;
                 var label = items[j][propertyToMatch];
-                var searchResult = regex.exec(label);
-                if (searchResult && searchResult[0].length > 0) { // Has a match
+                if (keyword && label.toLowerCase().indexOf(keyword.toLowerCase()) >= 0) { // Has a match
                     items[j].visible = true;
                 } else {
                     items[j].visible = false;
@@ -512,16 +566,8 @@
         }
         this.showLoading(component, false);
 
-        // Finally we update the v.items so iteration can 
-        // create the final items here.
-        component.set("v.items", items);
+        component.set("v.privateItems", items);
 
-        //this.updateEmptyListContent(component);
-        //JBUCH: HALO: HACK: WTF: FIXME THIS WHOLE COMPONENT
-        var itemCmps = component.find("iter").get("v.body");
-        for (var i = 0; i < itemCmps.length; i++) {
-            $A.util.toggleClass(itemCmps[i], "force");
-        }
         this.fireMatchDoneEvent(component, items);
     },
 
@@ -546,7 +592,7 @@
     },
 
     toggleListVisibility: function (component, items) {
-        var showEmptyListContent = !$A.util.isEmpty(component.get("v.emptyListContent")) && !$A.util.isEmpty(component.get("v.keyword"));
+        var showEmptyListContent = !$A.util.isEmpty(component.get("v.emptyListContent")) && (component.get("v.showEmptyList") || !$A.util.isEmpty(component.get("v.keyword")));
         var hasVisibleOption = this.hasVisibleOption(items);
         component.set("v.visible", hasVisibleOption || showEmptyListContent);
     },

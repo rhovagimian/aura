@@ -89,6 +89,11 @@ GlobalValueProviders.prototype.persistenceQueued = false;
  * True if GVPs were loaded from persistent storage. */
 GlobalValueProviders.prototype.LOADED_FROM_PERSISTENT_STORAGE = false;
 
+/**
+ * Cookie used to track when persistent storage is known to be missing GVP values.
+ */
+GlobalValueProviders.prototype.ABSENT_GVP_VALUES_COOKIE = "auraGvpValuesAbsence";
+
 
 /**
  * Merges new GVPs with existing and saves to storage
@@ -105,19 +110,25 @@ GlobalValueProviders.prototype.merge = function(gvps, doNotPersist) {
     var valueProvider, i, type, newGvp, values;
 
     for (i = 0; i < gvps.length; i++) {
-        newGvp = gvps[i];
-        type = newGvp["type"];
-        if (!this.valueProviders[type]) {
-            this.valueProviders[type] = new Aura.Provider.ObjectValueProvider();
+        try {
+            newGvp = gvps[i];
+            type = newGvp["type"];
+            if (!this.valueProviders[type]) {
+                this.valueProviders[type] = new Aura.Provider.ObjectValueProvider();
+            }
+            valueProvider = this.valueProviders[type];
+            if (valueProvider.merge) {
+                // set values into its value provider
+                valueProvider.merge(newGvp["values"]);
+            } else {
+                $A.util.apply(valueProvider,newGvp["values"],true);
+            }
+            $A.expressionService.updateGlobalReferences(type,newGvp["values"]);
+        } catch(e) {
+            var auraError = new $A.auraError("Merging GVP '" + type + "' failed", e);
+            auraError["component"] = type;
+            throw auraError;
         }
-        valueProvider = this.valueProviders[type];
-        if (valueProvider.merge) {
-            // set values into its value provider
-            valueProvider.merge(newGvp["values"]);
-        }else{
-            $A.util.apply(valueProvider,newGvp["values"],true);
-        }
-        $A.expressionService.updateGlobalReferences(type,newGvp["values"]);
     }
 
     if (doNotPersist) {
@@ -146,7 +157,7 @@ GlobalValueProviders.prototype.merge = function(gvps, doNotPersist) {
             .then(
                 undefined,
                 function(e) {
-                    $A.warning("GlobalValueProvider.merge(), failed to load GVP values from storage, will overwrite storage with in-memory values, error:" + e);
+                    $A.warning("GlobalValueProviders.merge(): failed to load GVP values from storage, will overwrite storage with in-memory values. " + e);
                     // do not rethrow
                 }
             )
@@ -178,7 +189,6 @@ GlobalValueProviders.prototype.merge = function(gvps, doNotPersist) {
                             map[value[j]["type"]] = value[j]["values"];
                         }
 
-
                         for (j in toStore) {
                             type = toStore[j]["type"];
                             if (!map[type]) {
@@ -189,18 +199,56 @@ GlobalValueProviders.prototype.merge = function(gvps, doNotPersist) {
                         }
 
                         toStore = value;
-                    } catch (err) {
-                        $A.warning("GlobalValueProvider.merge(), merging from storage failed, overwriting with in-memory values, error:" + err);
+                    } catch (e) {
+                        $A.warning("GlobalValueProviders.merge(): merging from storage failed, overwriting with in-memory values. " + e);
                     }
                 }
                 return storage.set(that.STORAGE_KEY, toStore);
             })
             .then(
                 function() {
+                    if (that.getAbsentGvpValuesCookie()) {
+                        // clear the cookie if persistence succeeds
+                        that.clearAbsentGvpValuesCookie();
+
+                        $A.metricsService.transaction("aura", "performance:gvpStorageRecovery", {
+                            "context": {
+                                "attributes" : {}
+                            }
+                        });
+                    }
+
                     that.mutexUnlock();
                 },
-                function(err) {
-                    $A.warning("GlobalValueProvider.merge(), failed to put, error:" + err);
+                function(e) {
+                    var message = "GlobalValueProviders.merge(): failed to store merged GVP values to storage. ";
+                    $A.warning(message + e);
+                    that.setAbsentGvpValuesCookie();
+
+                    // The error could protentially cause missing labels if a new loading page restores
+                    // GVPs from storage. Logging the error to server.
+                    // $A.logger.reportError(new $A.auraError(message, e));
+                    var labels;
+                    for (i = 0; i < gvps.length; i++) {
+                        // For now, only cares about labels. To minimize the payload, only sending the sections.
+                        if (gvps[i]["type"] === "$Label") {
+                            labels = Object.keys(gvps[i]["values"]);
+                            break;
+                        }
+                    }
+
+                    if (labels) {
+                        $A.metricsService.transaction("aura", "performance:gvpStorageFailure", {
+                            "context": {
+                                "attributes" : {
+                                    "message": message,
+                                    "error": e && e.toString(),
+                                    "labels": labels
+                                }
+                            }
+                        });
+                    }
+
                     that.mutexUnlock();
                 }
             );
@@ -230,7 +278,8 @@ GlobalValueProviders.prototype.getStorage = function () {
 GlobalValueProviders.prototype.loadFromStorage = function(callback) {
     // If persistent storage is active then write through for disconnected support
     var storage = this.getStorage();
-    if (!storage) {
+    // If GVP values absence is known, avoid loading from storage
+    if (!storage || this.getAbsentGvpValuesCookie()) {
         callback();
         return;
     }
@@ -316,6 +365,21 @@ GlobalValueProviders.prototype.get = function(expression, callback) {
     var valueProvider=this.valueProviders[type];
     $A.assert(valueProvider,"Unknown value provider: '"+type+"'.");
     return (valueProvider.get ? valueProvider.get(expression, callback) : $A.expressionService.resolve(expression, valueProvider));
+};
+
+
+GlobalValueProviders.prototype.getAbsentGvpValuesCookie = function() {
+    var cookie = $A.util.getCookie(this.ABSENT_GVP_VALUES_COOKIE);
+    return cookie === "true";
+};
+
+GlobalValueProviders.prototype.setAbsentGvpValuesCookie = function() {
+    var duration = 1000*60*60*24*7; // 1 week
+    $A.util.setCookie(this.ABSENT_GVP_VALUES_COOKIE, "true", duration);
+};
+
+GlobalValueProviders.prototype.clearAbsentGvpValuesCookie = function() {
+    $A.util.clearCookie(this.ABSENT_GVP_VALUES_COOKIE);
 };
 
 Aura.Provider.GlobalValueProviders = GlobalValueProviders;

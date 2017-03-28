@@ -17,7 +17,6 @@ package org.auraframework.impl.root.parser.handler;
 
 import org.auraframework.adapter.ConfigAdapter;
 import org.auraframework.adapter.DefinitionParserAdapter;
-import org.auraframework.def.BaseComponentDef.WhitespaceBehavior;
 import org.auraframework.def.ComponentDefRef;
 import org.auraframework.def.DefDescriptor;
 import org.auraframework.def.Definition;
@@ -25,7 +24,7 @@ import org.auraframework.def.HtmlTag;
 import org.auraframework.def.RootDefinition;
 import org.auraframework.impl.util.TextTokenizer;
 import org.auraframework.service.DefinitionService;
-import org.auraframework.system.Source;
+import org.auraframework.system.TextSource;
 import org.auraframework.throwable.quickfix.QuickFixException;
 import org.auraframework.util.AuraTextUtil;
 
@@ -46,19 +45,17 @@ public abstract class ParentedTagHandler<T extends Definition, P extends RootDef
         super();
     }
 
-    public ParentedTagHandler(ContainerTagHandler<P> parentHandler, XMLStreamReader xmlReader, Source<?> source,
+    public ParentedTagHandler(ContainerTagHandler<P> parentHandler, XMLStreamReader xmlReader, TextSource<?> source,
                               boolean isInInternalNamespace, DefinitionService definitionService,
                               ConfigAdapter configAdapter, DefinitionParserAdapter definitionParserAdapter) {
         this(null, parentHandler, xmlReader, source, isInInternalNamespace, definitionService, configAdapter, definitionParserAdapter);
     }
 
-    public ParentedTagHandler(DefDescriptor<T> defDescriptor, ContainerTagHandler<P> parentHandler, XMLStreamReader xmlReader, Source<?> source,
+    public ParentedTagHandler(DefDescriptor<T> defDescriptor, ContainerTagHandler<P> parentHandler, XMLStreamReader xmlReader, TextSource<?> source,
                               boolean isInInternalNamespace, DefinitionService definitionService,
                               ConfigAdapter configAdapter, DefinitionParserAdapter definitionParserAdapter) {
         super(defDescriptor, xmlReader, source, isInInternalNamespace, definitionService, configAdapter, definitionParserAdapter);
         this.parentHandler = parentHandler;
-        this.setWhitespaceBehavior(parentHandler == null ? WhitespaceBehavior.OPTIMIZE : parentHandler
-                .getWhitespaceBehavior());
     }
 
     protected RootTagHandler<P> getParentHandler() {
@@ -80,14 +77,13 @@ public abstract class ParentedTagHandler<T extends Definition, P extends RootDef
     protected List<ComponentDefRef> tokenizeChildText() throws XMLStreamException, QuickFixException {
         String text = xmlReader.getText();
 
-        boolean skip = getWhitespaceBehavior() == WhitespaceBehavior.OPTIMIZE ? AuraTextUtil
-                .isNullEmptyOrWhitespace(text) : AuraTextUtil.isNullOrEmpty(text);
+        boolean skip = AuraTextUtil.isNullEmptyOrWhitespace(text);
 
-                if (!skip) {
-                    TextTokenizer tokenizer = TextTokenizer.tokenize(text, getLocation(), getWhitespaceBehavior());
-                    return tokenizer.asComponentDefRefs(parentHandler);
-                }
-                return Collections.emptyList();
+        if (!skip) {
+            TextTokenizer tokenizer = TextTokenizer.tokenize(text, getLocation());
+            return tokenizer.asComponentDefRefs(parentHandler);
+        }
+        return Collections.emptyList();
     }
 
     /*

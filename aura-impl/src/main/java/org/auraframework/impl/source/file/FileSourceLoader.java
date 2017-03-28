@@ -19,13 +19,11 @@ import java.io.File;
 import java.io.FileFilter;
 import java.io.FilenameFilter;
 import java.io.IOException;
-
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 import org.auraframework.def.DefDescriptor;
-import org.auraframework.def.DefDescriptor.DefType;
 import org.auraframework.def.Definition;
 import org.auraframework.def.DescriptorFilter;
 import org.auraframework.impl.source.BaseSourceLoader;
@@ -98,10 +96,11 @@ public class FileSourceLoader extends BaseSourceLoader implements InternalNamesp
                         file.getName());
             }
         }
+        if (!file.exists()) {
+            return null;
+        }
 
-        String id = (file.exists()) ? FileSource.getFilePath(file) : filename;
-
-        return new FileSource<>(descriptor, id, file, getFormat(descriptor));
+        return new FileSource<>(descriptor, file, getFormat(descriptor));
     }
 
     /**
@@ -143,15 +142,6 @@ public class FileSourceLoader extends BaseSourceLoader implements InternalNamesp
                 }
             }
         }
-        return ret;
-    }
-
-    @Override
-    public <T extends Definition> Set<DefDescriptor<T>> find(Class<T> primaryInterface, String prefix, String namespace) {
-        Set<DefDescriptor<T>> ret = new HashSet<>();
-        DefType defType = DefType.getDefType(primaryInterface);
-        OneTypeFilter<T> otf = new OneTypeFilter<>(ret, defType);
-        findFiles(new File(base, namespace), null, otf);
         return ret;
     }
 
@@ -200,51 +190,6 @@ public class FileSourceLoader extends BaseSourceLoader implements InternalNamesp
 
         return file;
     }
-
-    /**
-     * This is a twisted filter that actually does the work as it progresses.
-     *
-     * We need to do this because we don't know a-priory what the types are, and rather than redo all of that work, we
-     * can simply do what we need to here.
-     */
-    protected static class OneTypeFilter<T extends Definition> implements FileFilter {
-        private final Set<DefDescriptor<T>> dset;
-        private final DefType dt;
-
-        /**
-         * The constructor.
-         *
-         * @param dset the set of descriptors to be filled.
-         * @param dt the DefType to accept.
-         */
-        public OneTypeFilter(Set<DefDescriptor<T>> dset, DefType dt) {
-            this.dt = dt;
-            this.dset = dset;
-        }
-
-        @Override
-        public boolean accept(File file) {
-            if (file.isDirectory()) {
-                return true;
-            }
-            List<DefDescriptor<?>> dds = getAllDescriptors(file.getPath());
-            if (dds == null) {
-                return false;
-            }
-            for (DefDescriptor<?> dd : dds) {
-                if (dd.getDefType() == dt) {
-                    @SuppressWarnings("unchecked")
-                    DefDescriptor<T> ddt = (DefDescriptor<T>)dd;
-                    dset.add(ddt);
-                }
-            }
-            // We don't need to accept this, as we've already either included or
-            // excluded the
-            // descriptor above.
-            return false;
-        }
-    }
-
 
     /**
      * This is a twisted filter that actually does the work as it progresses.
@@ -323,7 +268,7 @@ public class FileSourceLoader extends BaseSourceLoader implements InternalNamesp
 
     @Override
     public String toString() {
-        return super.toString() + '[' + base.getAbsolutePath() + ']';
+        return getClass().getSimpleName() + '[' + base.getAbsolutePath() + ']';
     }
 
     @Override
@@ -333,9 +278,14 @@ public class FileSourceLoader extends BaseSourceLoader implements InternalNamesp
         // for creation/deletion. There is a race condition whereby this will cause odd failures if files
         // are added/removed while something is running. caveat emptor
         if (filePath != null && filePath.startsWith(base.getPath()) && event != SourceMonitorEvent.CHANGED) {
-            synchronized (this) {
-                namespaces = null;
-            }
+            reset();
+        }
+    }
+
+    @Override
+    public void reset() {
+        synchronized (this) {
+            namespaces = null;
         }
     }
 }

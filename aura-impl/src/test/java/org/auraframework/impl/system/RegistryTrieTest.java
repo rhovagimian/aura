@@ -210,7 +210,7 @@ public class RegistryTrieTest extends AuraTestCase {
         MockRegistry reg = new MockRegistry().setNamespaces("testNamespace");
         RegistryTrie trie = new RegistryTrie(Lists.newArrayList(reg));
 
-        DefDescriptor descriptor = new DefDescriptorImpl("js://*:*", ComponentDef.class);
+        DefDescriptor<ComponentDef> descriptor = new DefDescriptorImpl("js://*:*", ComponentDef.class);
         DefRegistry actual = trie.getRegistryFor(descriptor);
         assertEquals(null, actual);
     }
@@ -276,7 +276,7 @@ public class RegistryTrieTest extends AuraTestCase {
     @Test
     public void testGetRegistryForNonMatchingSingularDefType() {
         MockRegistry reg1 = new MockRegistry().setNamespaces("otherNamespace").setDefTypes(DefType.COMPONENT);
-        MockRegistry reg2 = new MockRegistry().setNamespaces("testNamespace").setDefTypes(DefType.COMPONENT);
+        MockRegistry reg2 = new MockRegistry().setNamespaces("testNamespace").setDefTypes(DefType.COMPONENT, DefType.APPLICATION);
         RegistryTrie trie = new RegistryTrie(Lists.newArrayList(reg1, reg2));
 
         DefDescriptor<?> descriptor = new DefDescriptorImpl<>("testNamespace:*", ApplicationDef.class);
@@ -367,7 +367,7 @@ public class RegistryTrieTest extends AuraTestCase {
     @Test
     public void testGetRegistryForNonMatchingFallThroughToWildcardNamespace() {
         MockRegistry reg1 = new MockRegistry().setNamespaces("testNamespace").setDefTypes(DefType.COMPONENT);
-        MockRegistry reg2 = new MockRegistry().setNamespaces("*").setDefTypes(DefType.COMPONENT);
+        MockRegistry reg2 = new MockRegistry().setNamespaces("*").setDefTypes(DefType.COMPONENT, DefType.APPLICATION);
         RegistryTrie trie = new RegistryTrie(Lists.newArrayList(reg1, reg2));
 
         DefDescriptor<?> descriptor = new DefDescriptorImpl<>("otherNamespace:*", ApplicationDef.class);

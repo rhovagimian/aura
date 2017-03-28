@@ -26,7 +26,7 @@ import org.auraframework.impl.root.event.RegisterEventDefImpl;
 import org.auraframework.impl.root.event.RegisterEventDefImpl.Builder;
 import org.auraframework.service.DefinitionService;
 import org.auraframework.system.Location;
-import org.auraframework.system.Source;
+import org.auraframework.system.TextSource;
 import org.auraframework.throwable.quickfix.InvalidAccessValueException;
 import org.auraframework.throwable.quickfix.QuickFixException;
 import org.auraframework.util.AuraTextUtil;
@@ -55,7 +55,7 @@ public class RegisterEventHandler<P extends RootDefinition> extends ParentedTagH
         super();
     }
 
-    public RegisterEventHandler(RootTagHandler<P> parentHandler, XMLStreamReader xmlReader, Source<?> source,
+    public RegisterEventHandler(RootTagHandler<P> parentHandler, XMLStreamReader xmlReader, TextSource<?> source,
                                 boolean isInInternalNamespace, DefinitionService definitionService,
                                 ConfigAdapter configAdapter, DefinitionParserAdapter definitionParserAdapter) {
         super(parentHandler, xmlReader, source, isInInternalNamespace, definitionService, configAdapter, definitionParserAdapter);
@@ -97,7 +97,7 @@ public class RegisterEventHandler<P extends RootDefinition> extends ParentedTagH
     protected boolean allowPrivateAttribute() {
         return true;
     }
-	
+
     @Override
     protected RegisterEventDefImpl createDefinition() throws QuickFixException {
         return builder.build();

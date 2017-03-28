@@ -19,13 +19,14 @@ import org.auraframework.adapter.DefinitionParserAdapter;
 import org.auraframework.def.AttributeDefRef;
 import org.auraframework.def.ComponentDef;
 import org.auraframework.def.ComponentDefRef;
-import org.auraframework.def.ComponentDefRef.Load;
+import org.auraframework.def.DefinitionReference;
+import org.auraframework.def.DefinitionReference.Load;
 import org.auraframework.def.DefDescriptor;
 import org.auraframework.impl.AuraImplTestCase;
 import org.auraframework.impl.root.AttributeDefRefImpl;
-import org.auraframework.impl.root.parser.XMLParser;
+import org.auraframework.impl.factory.XMLParser;
+import org.auraframework.impl.source.StringSource;
 import org.auraframework.system.Parser.Format;
-import org.auraframework.test.source.StringSource;
 import org.auraframework.throwable.AuraRuntimeException;
 import org.junit.Test;
 
@@ -58,7 +59,7 @@ public class ComponentDefRefHandlerTest extends AuraImplTestCase {
     }
 
     @Test
-    public void testCreateDefinition() {
+    public void testCreateDefinition() throws Exception {
         ComponentDefRef cdr = cdrHandler.createDefinition();
         assertEquals("attr value", cdr.getAttributeDefRef("attr").getValue());
     }
@@ -68,6 +69,7 @@ public class ComponentDefRefHandlerTest extends AuraImplTestCase {
     public void testHandleChildText() throws Exception {
         xmlReader.next();
         cdrHandler.handleChildText();
+        cdrHandler.finishDefinition();
         ComponentDefRef cdr = cdrHandler.createDefinition();
         ArrayList<ComponentDefRef> compDefs = (ArrayList<ComponentDefRef>) cdr.getAttributeDefRef(
                 AttributeDefRefImpl.BODY_ATTRIBUTE_NAME).getValue();
@@ -81,8 +83,9 @@ public class ComponentDefRefHandlerTest extends AuraImplTestCase {
         xmlReader.next();
         xmlReader.next();
         cdrHandler.handleChildTag();
+        cdrHandler.finishDefinition();
         ComponentDefRef cdr = cdrHandler.createDefinition();
-        ArrayList<ComponentDefRef> compDefs = (ArrayList<ComponentDefRef>) cdr.getAttributeDefRef(
+        ArrayList<DefinitionReference> compDefs = (ArrayList<DefinitionReference>) cdr.getAttributeDefRef(
                 AttributeDefRefImpl.BODY_ATTRIBUTE_NAME).getValue();
         assertEquals("foo", compDefs.get(0).getDescriptor().getName());
     }

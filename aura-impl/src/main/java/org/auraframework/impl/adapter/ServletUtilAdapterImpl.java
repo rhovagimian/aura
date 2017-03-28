@@ -35,12 +35,14 @@ import org.apache.http.HttpHeaders;
 import org.apache.http.HttpStatus;
 import org.auraframework.adapter.ConfigAdapter;
 import org.auraframework.adapter.ContentSecurityPolicy;
+import org.auraframework.adapter.DefaultContentSecurityPolicy;
 import org.auraframework.adapter.ExceptionAdapter;
 import org.auraframework.adapter.ServletUtilAdapter;
 import org.auraframework.annotations.Annotations.ServiceComponent;
 import org.auraframework.clientlibrary.ClientLibraryService;
 import org.auraframework.def.BaseComponentDef;
 import org.auraframework.def.ClientLibraryDef;
+import org.auraframework.def.ClientLibraryDef.Type;
 import org.auraframework.def.DefDescriptor;
 import org.auraframework.def.DefDescriptor.DefType;
 import org.auraframework.http.CSP;
@@ -69,11 +71,11 @@ import com.google.common.collect.Sets;
 
 @ServiceComponent
 public class ServletUtilAdapterImpl implements ServletUtilAdapter {
-    private ContextService contextService;
-    private ConfigAdapter configAdapter;
     private ExceptionAdapter exceptionAdapter;
     private SerializationService serializationService;
     private ClientLibraryService clientLibraryService;
+    protected ContextService contextService;
+    protected ConfigAdapter configAdapter;
     protected TemplateUtil templateUtil = new TemplateUtil();
     protected DefinitionService definitionService;
     protected ManifestUtil manifestUtil;
@@ -239,10 +241,13 @@ public class ServletUtilAdapterImpl implements ServletUtilAdapter {
                 }
             } else if (mappedEx instanceof DefinitionNotFoundException && isProductionMode(context.getMode())
                     && format == Format.HTML) {
-                // We're in production and tried to hit an aura app that doesn't exist.
-                // just show the standard 404 page.
-                this.send404(request.getServletContext(), request, response);
-                return;
+            	DefDescriptor<? extends BaseComponentDef> appDescriptor = context.getApplicationDescriptor();
+                if (appDescriptor != null && appDescriptor.equals(((DefinitionNotFoundException) mappedEx).getDescriptor())) {
+                    // We're in production and tried to hit an aura app that doesn't exist.
+                    // just show the standard 404 page.
+                    this.send404(request.getServletContext(), request, response);
+                    return;
+                }
             }
 
             if (map) {
@@ -356,7 +361,7 @@ public class ServletUtilAdapterImpl implements ServletUtilAdapter {
      */
     private List<String> getClientLibraryUrls(AuraContext context, ClientLibraryDef.Type type)
             throws QuickFixException {
-    	return new ArrayList<>(clientLibraryService.getUrls(context, type));
+        return new ArrayList<>(clientLibraryService.getUrls(context, type));
     }
 
     /**
@@ -400,21 +405,26 @@ public class ServletUtilAdapterImpl implements ServletUtilAdapter {
 
     @Override
     public List <String> getJsClientLibraryUrls (AuraContext context) throws QuickFixException {
-    	return getClientLibraryUrls(context, ClientLibraryDef.Type.JS);
+        return getClientLibraryUrls(context, ClientLibraryDef.Type.JS);
     }
 
     @Override
     public void writeScriptUrls(AuraContext context, Map<String, Object> componentAttributes, StringBuilder sb) throws QuickFixException, IOException {
         templateUtil.writeHtmlScripts(context, this.getJsClientLibraryUrls(context), Script.LAZY, sb);
+        templateUtil.writeHtmlScript(context, this.getInteropEngineUrl(context), Script.SYNC, sb);
         templateUtil.writeHtmlScript(context, this.getInlineJsUrl(context, componentAttributes), Script.SYNC, sb);
         templateUtil.writeHtmlScript(context, this.getFrameworkUrl(), Script.SYNC, sb);
         templateUtil.writeHtmlScript(context, this.getAppJsUrl(context, null), Script.SYNC, sb);
         templateUtil.writeHtmlScript(context, this.getBootstrapUrl(context, componentAttributes), Script.SYNC, sb);
     }
 
+    public String getInteropEngineUrl(AuraContext context) {
+        return clientLibraryService.getResolverRegistry().get("engine", Type.JS).getUrl();
+    }
+
     @Override
     public List <String> getCssClientLibraryUrls (AuraContext context) throws QuickFixException {
-    	return new ArrayList<>(getClientLibraryUrls(context, ClientLibraryDef.Type.CSS));
+        return new ArrayList<>(getClientLibraryUrls(context, ClientLibraryDef.Type.CSS));
     }
 
     @Override
@@ -437,12 +447,23 @@ public class ServletUtilAdapterImpl implements ServletUtilAdapter {
      */
     @Override
     public String getBootstrapUrl(AuraContext context, Map<String,Object> attributes) {
-        return commonJsUrl("/bootstrap.js", context, attributes);
+        String ret = commonJsUrl("/bootstrap.js", context, attributes);
+        ret += ret.endsWith("bootstrap.js") ? "?jwt=" : "&jwt=";
+        ret += configAdapter.generateJwtToken();
+        return ret;
     }
 
     @Override
     public String getInlineJsUrl(AuraContext context, Map<String,Object> attributes) {
-        return commonJsUrl("/inline.js", context, attributes);
+        String ret = commonJsUrl("/inline.js", context, attributes);
+
+        // The way we render the appcache manifest does not handle the ampersand in urls. For appcached apps, we don't
+        // need the token in inline anyways.
+        if (!manifestUtil.isManifestEnabled()) {
+            ret += ret.endsWith("inline.js") ? "?jwt=" : "&jwt=";
+            ret += configAdapter.generateJwtToken();
+        }
+        return ret;
     }
 
     @Override
@@ -459,7 +480,7 @@ public class ServletUtilAdapterImpl implements ServletUtilAdapter {
         return defs.toString();
     }
 
-    private String commonJsUrl (String filepath, AuraContext context, Map<String,Object> attributes) {
+    protected String commonJsUrl (String filepath, AuraContext context, Map<String,Object> attributes) {
         StringBuilder url = new StringBuilder(context.getContextPath()).append("/l/");
         url.append(context.getEncodedURL(AuraContext.EncodingStyle.Normal));
         url.append(filepath);
@@ -498,9 +519,8 @@ public class ServletUtilAdapterImpl implements ServletUtilAdapter {
      * Sets mandatory headers, notably for anti-clickjacking.
      */
     @Override
-    public void setCSPHeaders(DefDescriptor<?> top, HttpServletRequest req, HttpServletResponse rsp) {
-
-        if(canSkipCSPHeader(top, req)) {
+    public final void setCSPHeaders(DefDescriptor<?> top, HttpServletRequest req, HttpServletResponse rsp) {
+        if (canSkipCSPHeader(top, req)) {
             return;
         }
 
@@ -508,6 +528,14 @@ public class ServletUtilAdapterImpl implements ServletUtilAdapter {
                 top == null ? null : top.getQualifiedName(), req);
 
         if (csp != null) {
+            // Allow unsafe-eval if this is the system safeEval worker
+            if (req.getRequestURI().endsWith(SAFE_EVAL_HTML_URI)) {
+                String qs = req.getQueryString();
+                if (qs != null && qs.equalsIgnoreCase("id=system")) {
+                    csp = new SystemModeSafeEvalSecurityPolicy(csp);
+                }
+            }
+            
             rsp.addHeader(CSP.Header.SECURE, csp.getCspHeaderValue());
             Collection<String> terms = csp.getFrameAncestors();
             if (terms != null) {
@@ -845,4 +873,77 @@ public class ServletUtilAdapterImpl implements ServletUtilAdapter {
     public void setManifestUtil(ManifestUtil manifestUtil) {
         this.manifestUtil = manifestUtil;
     }
+    
+    
+    private static class SystemModeSafeEvalSecurityPolicy implements ContentSecurityPolicy {
+        SystemModeSafeEvalSecurityPolicy(ContentSecurityPolicy delegate) {
+            this.delegate = delegate;
+        }
+        
+        @Override
+        public String getCspHeaderValue() {
+            return DefaultContentSecurityPolicy.buildHeaderNormally(this);
+        }
+
+        @Override
+        public Collection<String> getFrameAncestors() {
+            return delegate.getFrameAncestors();
+        }
+
+        @Override
+        public Collection<String> getFrameSources() {
+            return delegate.getFrameSources();
+        }
+
+        @Override
+        public Collection<String> getScriptSources() {
+            Collection<String> sources = Lists.newArrayList(delegate.getScriptSources());
+            sources.add(CSP.UNSAFE_EVAL);
+            return sources;
+        }
+
+        @Override
+        public Collection<String> getStyleSources() {
+            return delegate.getStyleSources();
+        }
+
+        @Override
+        public Collection<String> getFontSources() {
+            return delegate.getFontSources();
+        }
+
+        @Override
+        public Collection<String> getConnectSources() {
+            return delegate.getConnectSources();
+        }
+
+        @Override
+        public Collection<String> getDefaultSources() {
+            return delegate.getDefaultSources();
+        }
+
+        @Override
+        public Collection<String> getImageSources() {
+            return delegate.getImageSources();
+        }
+
+        @Override
+        public Collection<String> getObjectSources() {
+            return delegate.getObjectSources();
+        }
+
+        @Override
+        public Collection<String> getMediaSources() {
+            return delegate.getMediaSources();
+        }
+
+        @Override
+        public String getReportUrl() {
+            return delegate.getReportUrl();
+        }
+        
+        private final ContentSecurityPolicy delegate;
+    }
+    
+    private static final String SAFE_EVAL_HTML_URI = "/lockerservice/safeEval.html";
 }

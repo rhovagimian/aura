@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 ({
+    updateStyle: function(cmp, event, helper) {
+        helper.updateStyle(cmp);
+    },
+    scrollTo: function(cmp, event, helper) {
+        helper.handleScrollTo(cmp, event);
+    },
     handleTouchstart : function(cmp, event) {
         var startY = event.touches ? event.touches[0].screenY : event.screenY;
         cmp.set('v.privateStartY',startY);

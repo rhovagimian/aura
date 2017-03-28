@@ -586,7 +586,7 @@ Action.prototype.callAllAboardCallback = function (context) {
             return false;
         } finally {
             context.setCurrentAction(previous);
-            $A.getContext().releaseCurrentAccess();
+            context.releaseCurrentAccess();
         }
     }
     return true;
@@ -820,16 +820,39 @@ Action.prototype.updateFromResponse = function(response) {
         for (i = 0; i < response["error"].length; i++) {
             var err = response["error"][i];
             if (err["exceptionEvent"]) {
+                // default server action error handling, ignore action callback
+                if (err["useDefault"]) {
+                    // Get error attribute for systemError event.
+                    var error = err["event"]["attributes"]["values"]["error"];
+                    error.severity = $A.severity.ALERT;
+
+                    var evtArgs = {"message":error["message"],"error":null,"auraError":error};
+                    // fire the event later so the function could return even if an error occurs in the event handler.
+                    window.setTimeout(function() {  //eslint-disable-line no-loop-func
+                        $A.eventService.getNewEvent('markup://aura:systemError').fire(evtArgs);
+                    }, 0);
+
+                    // should not invoke the callback
+                    return false;
+                }
+
                 // returning COOS in AuraEnabled controller would go here
                 var eventObj = err["event"];
                 if (eventObj["descriptor"]) {
                     var eventDescriptor = new DefDescriptor(eventObj["descriptor"]);
                     var eventName = eventDescriptor.getName();
                     var eventNamespace = eventDescriptor.getNamespace();
-                    if (eventNamespace === "aura" && (eventName === "clientOutOfSync" || eventName === "invalidSession")) {
-                        $A.clientService.throwExceptionEvent(err);
-                        // should not invoke the callback for system level exception events
-                        return false;
+                    if (eventNamespace === "aura") {
+                        if (eventName === "clientOutOfSync" || eventName === "invalidSession") {
+                            $A.clientService.throwExceptionEvent(err);
+                            // should not invoke the callback for system level exception events
+                            return false;
+                        }
+                        if (eventName === "serverActionError") {
+                            this.error = [eventObj["attributes"]["values"]["error"]];
+                            // should only invoke client action callback for serverActionError for custom handling
+                            return true;
+                        }
                     }
                 }
 
@@ -905,72 +928,75 @@ Action.prototype.prepareToSend = function() {
  */
 Action.prototype.finishAction = function(context) {
     var previous = context.setCurrentAction(this);
-    context.setCurrentAccess(this.cmp);
     var clearComponents = false;
     var id = this.getId(context);
     var error = undefined;
     var oldDisplayFlag = $A.showErrors();
-    if (this.isFromStorage()) {
-        // suppress errors dialogs while performing cached actions.
-        // allows retry without the error dialog.
-        $A.showErrors(false);
-    }
+    context.setCurrentAccess(this.cmp);
     try {
-        if (this.cmp === undefined || this.cmp.isValid()) {
-            // Add in any Action scoped components /or partial configs
-            if (this.components) {
-                context.joinComponentConfigs(this.components, id);
-                clearComponents = true;
-            }
+        if (this.isFromStorage()) {
+            // suppress errors dialogs while performing cached actions.
+            // allows retry without the error dialog.
+            $A.showErrors(false);
+        }
+        try {
+            if (this.cmp === undefined || this.cmp.destroyed!==1) {
+                // Add in any Action scoped components /or partial configs
+                if (this.components) {
+                    context.joinComponentConfigs(this.components, id);
+                    clearComponents = true;
+                }
 
-            if (this.events.length > 0) {
-                for (var x = 0; x < this.events.length; x++) {
-                    try {
-                        this.parseAndFireEvent(this.events[x]);
-                    } catch (e) {
-                        var eventFailedMessage = "Events failed: "+(this.def?this.def.toString():"");
-                        $A.warning(eventFailedMessage, e);
-                        e.message = e.message ? (e.message + '\n' + eventFailedMessage) : eventFailedMessage;
+                if (this.events.length > 0) {
+                    for (var x = 0; x < this.events.length; x++) {
+                        try {
+                            this.parseAndFireEvent(this.events[x]);
+                        } catch (e) {
+                            var eventFailedMessage = "Events failed: "+(this.def?this.def.toString():"");
+                            $A.warning(eventFailedMessage, e);
+                            e.message = e.message ? (e.message + '\n' + eventFailedMessage) : eventFailedMessage;
+                            error = e;
+                        }
+                    }
+                }
+
+                // If there is a callback for the action's current state, invoke that too
+                var cb = this.callbacks[this.getState()];
+
+                try {
+                    if (cb) {
+                        cb["fn"].call(cb["s"], this, this.cmp);
+                    }
+                } catch (e) {
+                    var callbackFailedMessage = "Callback failed: " + (this.def?this.def.toString():"");
+                    $A.warning(callbackFailedMessage, e);
+                    e.message = e.message ? (e.message + '\n' + callbackFailedMessage) : callbackFailedMessage;
+                    if (!error) {
                         error = e;
                     }
                 }
-            }
 
-            // If there is a callback for the action's current state, invoke that too
-            var cb = this.callbacks[this.getState()];
-
-            try {
-                if (cb) {
-                    cb["fn"].call(cb["s"], this, this.cmp);
+                this.complete();
+                if (this.components && (cb || !this.storable || !this.getStorage())) {
+                    context.finishComponentConfigs(id);
+                    clearComponents = false;
                 }
-            } catch (e) {
-                var callbackFailedMessage = "Callback failed: " + (this.def?this.def.toString():"");
-                $A.warning(callbackFailedMessage, e);
-                e.message = e.message ? (e.message + '\n' + callbackFailedMessage) : callbackFailedMessage;
-                if (!error) {
-                    error = e;
-                }
+            } else {
+                this.abort();
+            }
+        } catch (e) {
+            var actionFailedMessage = "Action failed: " + (this.def?this.def.toString():"");
+            $A.warning(actionFailedMessage, e);
+            e.message = e.message ? (e.message + '\n' + actionFailedMessage) : actionFailedMessage;
+            if (!error) {
+                error = e;
             }
 
-            this.complete();
-            if (this.components && (cb || !this.storable || !this.getStorage())) {
-                context.finishComponentConfigs(id);
-                clearComponents = false;
-            }
-        } else {
-            this.abort();
+            clearComponents = true;
         }
-    } catch (e) {
-        var actionFailedMessage = "Action failed: " + (this.def?this.def.toString():"");
-        $A.warning(actionFailedMessage, e);
-        e.message = e.message ? (e.message + '\n' + actionFailedMessage) : actionFailedMessage;
-        if (!error) {
-            error = e;
-        }
-
-        clearComponents = true;
+    } finally {
+        context.releaseCurrentAccess();
     }
-    context.releaseCurrentAccess();
     context.setCurrentAction(previous);
     if (clearComponents) {
         context.clearComponentConfigs(id);
@@ -995,7 +1021,7 @@ Action.prototype.finishAction = function(context) {
  * @private
  */
 Action.prototype.abortIfComponentInvalid = function(beforeSend) {
-    if ((!beforeSend || this.abortable) && this.cmp !== undefined && !this.cmp.isValid()) {
+    if ((!beforeSend || this.abortable) && this.cmp !== undefined && this.cmp.destroyed===1) {
         this.abort();
         return true;
     }
@@ -1244,10 +1270,14 @@ Action.prototype.markException = function(e) {
     // if the error doesn't have id, we wrap it with auraError so that when displaying UI, it will have an id
     if (!e.id) {
         e = new $A.auraError(descriptor ? "Action failed: " + descriptor : "", e);
-        e.component = descriptor;
+        e["component"] = descriptor;
     } else if (e instanceof $A.auraError) {
         // keep the root cause failing descriptor
-        e.component = e.component || descriptor;
+        e["component"] = e["component"] || descriptor;
+    }
+
+    if (!e['componentStack']) {
+        e['componentStack'] = $A.util.getComponentHierarchy(this.cmp);
     }
 
     this.state = "ERROR";

@@ -35,7 +35,8 @@
      * Close given tab item
      */
     closeTab: function (cmp, index) {
-        var closed = false, tabItems = cmp.get("v.tabHeaders");
+        var closed = false;
+        var tabItems = cmp.get("v.tabHeaders");
         if ($A.util.isNumber(index) && index >= 0 && index < tabItems.length) {
             tabItems.splice(index, 1);
             cmp.set("v.tabHeaders",tabItems);
@@ -87,13 +88,12 @@
             tab.title && existingTab.set("v.title", tab.title);
 
             if(tab.icon) {
-                $A.componentService.newComponentAsync(this, function(newCmp) {
-                    existingTab.set("v.icon", newCmp);
-                    if(typeof callback === "function") {
-                        callback(existingTab);
-                    }
-                }, tab.icon);
-            } else if(typeof callback === "function") {
+                var icon = $A.createComponentFromConfig(tab.icon);
+                existingTab.set("v.icon", icon);
+                if (typeof callback === "function") {
+                    callback(existingTab);
+                }
+            } else if (typeof callback === "function") {
                 callback(existingTab);
             }
         }
@@ -225,8 +225,9 @@
 
         for (var i = 0; i < len; i++) {
             var config = tabValues.get ? tabValues.get(i) : tabValues[i];
-            $A.componentService.newComponentAsync(this, fn, config, config.valueProvider || cmp);
-            
+            var newComponent = $A.createComponentFromConfig(config);
+            fn(newComponent);
+
         }
         
     },

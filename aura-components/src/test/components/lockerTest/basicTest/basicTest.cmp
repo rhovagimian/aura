@@ -20,7 +20,8 @@
     <aura:attribute name="testRenderer" type="Boolean" default="false" description="Set to true to check Locker wrappers in renderer"/>
     <aura:attribute name="componentStore" type="Object"/>
     <aura:attribute name="thisAttribute" type="Object" default="{!this}"/>
-
+    <aura:attribute name="object" type="Object"/>
+    
     <aura:handler name="init" value="{!this}" action="{!c.doInit}"/>
 
     <aura:method name="testAuraLockerInController" action="{!c.testAuraLockerInController}"/>
@@ -28,7 +29,9 @@
     <aura:method name="testDocumentLockerInController" action="{!c.testDocumentLockerInController}"/>
     <aura:method name="testWindowLockerInController" action="{!c.testWindowLockerInController}"/>
     <aura:method name="testAppendDynamicallyCreatedDivToMarkup" action="{!c.testAppendDynamicallyCreatedDivToMarkup}"/>
-    <aura:method name="testEvalBlocking" action="{!c.testEvalBlocking}"/>
+    <aura:method name="testEvalBlocking" action="{!c.testEvalBlocking}">
+        <aura:attribute name="inIframe" type="boolean"/>
+    </aura:method>
     <aura:method name="testContextOfController" action="{!c.testContextOfController}"/>
     <aura:method name="testDefineGetterExploit" action="{!c.testDefineGetterExploit}"/>
     <aura:method name="testSetTimeoutNonFunctionParamExploit" action="{!c.testSetTimeoutNonFunctionParamExploit}"/>
@@ -43,6 +46,7 @@
     <aura:method name="testLockerDisabledForUnsupportedBrowser" action="{!c.testLockerDisabledForUnsupportedBrowser}"/>
     <aura:method name="testComponentPassedToOtherNamespaceViaCreateComponent" action="{!c.testComponentPassedToOtherNamespaceViaCreateComponent}"/>
     <aura:method name="testInstanceOf" action="{!c.testInstanceOf}"/>
+    <aura:method name="testFilteringProxy" action="{!c.testFilteringProxy}"/>
 
     <div>LockerService test</div>
     <div aura:id="content" id="content"/>
@@ -51,6 +55,8 @@
     <ul aura:id="ul" id="ul1">
         <li aura:id="l1" id="l1">A</li>
     </ul>
-
+    
     <ui:outputText aura:id="outputText" value="Output Text here"/>
+    
+    <lockerTestOtherNamespace:acceptsAttribute aura:id="otherNamespace"/>
 </aura:component>

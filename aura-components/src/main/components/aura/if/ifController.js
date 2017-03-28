@@ -14,27 +14,6 @@
  * limitations under the License.
  */
 ({
-    init: function(cmp, evt, helper) {
-        var bodyTemplate  = cmp.get("v.body");
-        var isTrue        = $A.util.getBooleanValue(cmp.get("v.isTrue"));
-        var template      = cmp.get("v.template");
-
-        if (bodyTemplate.length && !template.length) {
-            cmp.set("v.template", bodyTemplate, true);
-            cmp.set("v.body", [], true);
-        }
-
-        var body = helper.createBody(cmp, isTrue);
-        cmp.set("v.body", body, true);
-        cmp._truth = isTrue;
-    },
-    handleTheTruth: function(cmp, evt, helper) {
-        var isTrue = $A.util.getBooleanValue(cmp.get("v.isTrue"));
-        if (cmp._truth !== isTrue) {
-            helper.clearUnrenderedBody(cmp);
-
-            cmp.set("v.body", helper.createBody(cmp, isTrue, true));
-            cmp._truth = isTrue;
-        }
-    }
+   // The logic for the if controller is in IfComponent.js. 
+   // We still need a blank controller file though so the server knows that we have client side dependencies.
 })// eslint-disable-line semi

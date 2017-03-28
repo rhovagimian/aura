@@ -21,7 +21,7 @@ Test.Aura.AuraClientServiceTest = function() {
     var Aura = {Services: {}, Controller: {}, Utils: {Util:{prototype:{on:function(){}}}}};
     var document = {
         getElementById : function(id) {
-            return id === "safeEvalWorker" ? {} : undefined;
+            return id === "safeEvalWorkerCustom" ? {} : undefined;
         }
     };
 
@@ -81,7 +81,8 @@ Test.Aura.AuraClientServiceTest = function() {
             },
             clientService: {
                 hardRefresh: function(){}
-            }
+            },
+            warning: function() {}
         },
         window:{},
         document:document,
@@ -897,6 +898,9 @@ Test.Aura.AuraClientServiceTest = function() {
                             },
                             isPersistent: function() {
                                 return true;
+                            },
+                            enqueue: function(fn) {
+                                fn();
                             }
                         }
                     }
@@ -932,6 +936,9 @@ Test.Aura.AuraClientServiceTest = function() {
                             },
                             isPersistent: function() {
                                 return true;
+                            },
+                            enqueue: function(fn) {
+                                fn();
                             }
                         }
                     }
@@ -1023,7 +1030,98 @@ Test.Aura.AuraClientServiceTest = function() {
             Assert.Equal(0, mockSetItems.Calls.length);
         }
 
+        [Fact]
+        function StoresTokenAfterInitialization() {
+
+            var expectedToken = "myToken";
+            var storedItems;
+            var mockAction = Mocks.GetMocks(Object.Global(), {
+                Action: {
+                    getStorage: function() {
+                        return {
+                        	enqueue : function(afterInit) {
+                        		var resolve = Stubs.GetMethod();
+                        		afterInit(resolve);
+                        	},
+                            adapter:{
+                                setItems: function(items) {
+                                	storedItems = items;
+                                	return ResolvePromise();
+                                }
+                            },
+                            isPersistent: function() {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            });
+
+            mockGlobal(function() {
+                mockAction(function() {
+                    var targetService = new Aura.Services.AuraClientService();
+                    targetService._token = expectedToken;
+
+                    targetService.saveTokenToStorage();
+                });
+            });
+
+            Assert.Equal(expectedToken, storedItems[0][1].value.token);
+        }
+
     }
+
+
+    [Fixture]
+    function loadTokenFromStorage() {
+
+        [Fact]
+        function ResolvesToTokenAfterInitialization() {
+
+        	var expectedToken = "myToken";
+            var storedItem = {};
+        	storedItem[Aura.Services.AuraClientService.TOKEN_KEY] = {
+    			value : {
+    				token : expectedToken
+    			}
+            };
+            var actual;
+            var resolve = function(value) {
+            	actual = value;
+            };
+            var mockAction = Mocks.GetMocks(Object.Global(), {
+                Action: {
+                    getStorage: function() {
+                        return {
+                        	enqueue : function(afterInit) {
+                        		afterInit(resolve);
+                        	},
+                            adapter:{
+                                getItems: function(items) {
+                                	return ResolvePromise(storedItem);
+                                }
+                            },
+                            isPersistent: function() {
+                                return true;
+                            }
+                        };
+                    }
+                }
+            });
+
+            mockGlobal(function() {
+                mockAction(function() {
+                    var targetService = new Aura.Services.AuraClientService();
+
+                    targetService.loadTokenFromStorage();
+                });
+            });
+
+            Assert.Equal(expectedToken, actual);
+        }
+
+    }
+
 
     [Fixture]
     function invalidSession() {
@@ -1732,6 +1830,9 @@ Test.Aura.AuraClientServiceTest = function() {
            storageClearCalled = false;
            componentDefsClearCalled = false;
            mockDeps(function() {
+                window.applicationCache.swapCache = function(){};
+                window.applicationCache.UPDATEREADY = 4;
+                window.applicationCache.status = 4;
                 var targetService = new Aura.Services.AuraClientService();
                 targetService.shouldPreventReload = function() { return false; };
                 targetService.reloadPointPassed = true;
@@ -1739,6 +1840,23 @@ Test.Aura.AuraClientServiceTest = function() {
            });
 
            Assert.True(componentDefsClearCalled);
+       }
+
+       [Fact]
+       function doesNotCallComponentRegistryClearWhenUpdateReadyIsntReallyReady() {
+           storageClearCalled = false;
+           componentDefsClearCalled = false;
+           mockDeps(function() {
+                window.applicationCache.swapCache = function(){};
+                window.applicationCache.UPDATEREADY = 4;
+                window.applicationCache.status = undefined;
+                var targetService = new Aura.Services.AuraClientService();
+                targetService.shouldPreventReload = function() { return false; };
+                targetService.reloadPointPassed = true;
+                evtCallbacks["updateready"]();
+           });
+
+           Assert.False(componentDefsClearCalled);
        }
     }
 
@@ -1917,20 +2035,21 @@ Test.Aura.AuraClientServiceTest = function() {
             var target;
             mockGlobal(function() {
                 target = new Aura.Services.AuraClientService();
-            });
-            target.decode = function(response, noStrip, timedOut) {
-                actual = timedOut;
-                return response;
-            };
-            target.fireDoneWaiting = function(){};
-            target.auraStack = {
-                    push: function(){},
-                    pop: function(){}
-            };
-            target.releaseXHR = function(){};
-            target.process = function(){};
 
-            target.receive({request:{status: "nothing"}}, expected);
+                target.decode = function(response, noStrip, timedOut) {
+                    actual = timedOut;
+                    return response;
+                };
+                target.fireDoneWaiting = function(){};
+                target.auraStack = {
+                        push: function(){},
+                        pop: function(){}
+                };
+                target.releaseXHR = function(){};
+                target.process = function(){};
+
+                target.receive({request:{status: "nothing"}}, expected);
+            });
 
             Assert.Equal(expected, actual);
         }
@@ -2429,6 +2548,255 @@ Test.Aura.AuraClientServiceTest = function() {
             });
 
             Assert.True(actual);
+        }
+    }
+
+    [Fixture]
+    function loadTokenFromStorage() {
+        [Fact]
+        function ResolvesToTokenIfStored() {
+            var expected = "someToken";
+            var actual;
+            var target;
+
+            var mockAction = Mocks.GetMocks(Object.Global(), {
+                Action: {
+                    getStorage: function() {
+                        return {
+                            adapter:{
+                                getItems: function(keys) {
+                                    var items = {};
+                                    items[Aura.Services.AuraClientService.TOKEN_KEY] = {
+                                        value : {
+                                            token : expected
+                                        }
+                                    };
+                                    return ResolvePromise(items);
+                                }
+                            },
+                            isPersistent: function() {
+                                return true;
+                            },
+                            enqueue: function(fn) {
+                                var token;
+                                var resolve = function(value) {
+                                    token = value;
+                                }
+
+                                fn(resolve);
+                                return ResolvePromise(token);
+                            }
+                        };
+                    }
+                }
+            });
+
+            mockGlobal(function() {
+                mockAction(function(){
+                    target = new Aura.Services.AuraClientService();
+                    target.loadTokenFromStorage().then(function(token){
+                        actual = token;
+                    });
+                });
+            });
+
+            Assert.Equal(expected, actual);
+        }
+
+        [Fact]
+        function SetsTokenIfStored() {
+            var expected = "someToken";
+            var actual;
+            var target;
+
+            var mockAction = Mocks.GetMocks(Object.Global(), {
+                Action: {
+                    getStorage: function() {
+                        return {
+                            adapter:{
+                                getItems: function(keys) {
+                                    var items = {};
+                                    items[Aura.Services.AuraClientService.TOKEN_KEY] = {
+                                        value : {
+                                            token : expected
+                                        }
+                                    };
+                                    return ResolvePromise(items);
+                                }
+                            },
+                            isPersistent: function() {
+                                return true;
+                            },
+                            enqueue: function(fn) {
+                                fn();
+                            }
+                        };
+                    }
+                }
+            });
+
+            mockGlobal(function() {
+                mockAction(function(){
+                    target = new Aura.Services.AuraClientService();
+                    target.setToken = function(token){
+                        actual = token;
+                    };
+                    target.loadTokenFromStorage();
+                });
+            });
+
+            Assert.Equal(expected, actual);
+        }
+
+        [Fact]
+        function ResolvesUndefinedIfTokenNotInStorage() {
+            var expected = undefined;
+            var actual;
+            var target;
+
+            var mockAction = Mocks.GetMocks(Object.Global(), {
+                Action: {
+                    getStorage: function() {
+                        return {
+                            adapter:{
+                                getItems: function(keys) {
+                                    var items = {};
+                                    return ResolvePromise(items);
+                                }
+                            },
+                            isPersistent: function() {
+                                return true;
+                            },
+                            enqueue: function(fn) {
+                                var token;
+                                var resolve = function(value) {
+                                    token = value;
+                                }
+
+                                fn(resolve);
+                                return ResolvePromise(token);
+                            }
+                        };
+                    }
+                }
+            });
+
+            mockGlobal(function() {
+                mockAction(function(){
+                    target = new Aura.Services.AuraClientService();
+                    target.loadTokenFromStorage().then(function(token){
+                        actual = token;
+                    });
+                });
+            });
+
+            Assert.Equal(expected, actual);
+        }
+
+        [Fact]
+        function ResolvesUndefinedIfNoStorage() {
+            var expected = undefined;
+            var actual;
+            var target;
+
+            var mockAction = Mocks.GetMocks(Object.Global(), {
+                Action: {
+                    getStorage: function() {
+                        return null;
+                    }
+                }
+            });
+
+            mockGlobal(function() {
+                mockAction(function(){
+                    target = new Aura.Services.AuraClientService();
+                    target.loadTokenFromStorage().then(function(token){
+                        actual = token;
+                    });
+                });
+            });
+
+            Assert.Equal(expected, actual);
+        }
+
+        [Fact]
+        function ResolvesUndefinedIfStorageNotPersistent() {
+            var expected = undefined;
+            var actual;
+            var target;
+
+            var mockAction = Mocks.GetMocks(Object.Global(), {
+                Action: {
+                    getStorage: function() {
+                        return {
+                            isPersistent: function() {
+                                return false;
+                            }
+                        };
+                    }
+                }
+            });
+
+            mockGlobal(function() {
+                mockAction(function(){
+                    Promise["reject"] = function(reason){
+                        actual = reason;
+                    };
+                    target = new Aura.Services.AuraClientService();
+                    target.loadTokenFromStorage().then(function(token){
+                        actual = token;
+                    });
+                });
+            });
+
+            Assert.Equal(expected, actual);
+        }
+
+        [Fact]
+        function RejectsIfInvalidToken() {
+            var expected = new TypeError("Cannot read property 'token' of undefined");
+            var actual;
+            var target;
+
+            var mockAction = Mocks.GetMocks(Object.Global(), {
+                Action: {
+                    getStorage: function() {
+                        return {
+                            adapter:{
+                                getItems: function(keys) {
+                                    var items = {};
+                                    items[Aura.Services.AuraClientService.TOKEN_KEY] = {
+                                    };
+                                    return ResolvePromise(items);
+                                }
+                            },
+                            isPersistent: function() {
+                                return true;
+                            },
+                            enqueue: function(fn) {
+                                var error;
+                                var reject = function(err) {
+                                    error = err;
+                                }
+
+                                fn(undefined, reject);
+                                return RejectPromise(error);
+                            }
+                        };
+                    }
+                }
+            });
+
+            mockGlobal(function() {
+                mockAction(function(){
+                    target = new Aura.Services.AuraClientService();
+                    target.loadTokenFromStorage().then(function(){},function(error){
+                        actual = error;
+                    });
+                });
+            });
+
+            Assert.Equal(expected, actual);
         }
     }
 }

@@ -24,8 +24,8 @@ function PropertyReferenceValue(path, valueProvider) {
     this.path = isArray?path:path.split('.');
     this.expression = isArray?path.join('.'):path;
     this.isGlobal=this.expression.charAt(0) === '$';
-    this.valueProvider = valueProvider;
-    this.context=(valueProvider instanceof PassthroughValue)?valueProvider:$A.getContext().getCurrentAccess();
+    this.valueProvider=this.isGlobal?null:valueProvider;
+    this.context=this.isGlobal?null:((valueProvider instanceof PassthroughValue)?valueProvider:$A.getContext().getCurrentAccess());
     this.lastResult=null;
     this.isValid=true;
 
@@ -39,18 +39,21 @@ function PropertyReferenceValue(path, valueProvider) {
  */
 PropertyReferenceValue.prototype.evaluate = function(valueProvider) {
     if(this.isValid) {
-    if (this.isGlobal) {
+        if (this.isGlobal) {
             this.lastResult = aura.get(this.expression);
-        return this.lastResult;
-    }
+            return this.lastResult;
+        }
         if (!valueProvider) {
             valueProvider = this.valueProvider;
         }
-    $A.getContext().setCurrentAccess(this.context);
-        var result = valueProvider.get(this.expression);
-        this.lastResult = result;
-    $A.getContext().releaseCurrentAccess();
-    return result;
+        $A.getContext().setCurrentAccess(this.context);
+        try {
+            var result = valueProvider.get(this.expression);
+            this.lastResult = result;
+            return result;
+        } finally {
+            $A.getContext().releaseCurrentAccess();
+        }
     }
 };
 
@@ -60,12 +63,15 @@ PropertyReferenceValue.prototype.evaluate = function(valueProvider) {
 PropertyReferenceValue.prototype.set = function(value) {
     if(this.isValid) {
         if (this.isGlobal) {
-        return aura.set(this.expression, value);
-    }
-    $A.getContext().setCurrentAccess(this.context);
-        var result = this.valueProvider.set(this.expression, value);
-    $A.getContext().releaseCurrentAccess();
-    return result;
+            return aura.set(this.expression, value);
+        }
+        $A.getContext().setCurrentAccess(this.context);
+        try {
+            var result = this.valueProvider.set(this.expression, value);
+            return result;
+        } finally {
+            $A.getContext().releaseCurrentAccess();
+        }
     }
 };
 
@@ -73,12 +79,12 @@ PropertyReferenceValue.prototype.set = function(value) {
  * @export
  */
 PropertyReferenceValue.prototype.addChangeHandler=function(cmp, key, method, rebind) {
-    var valueProvider=this.valueProvider;
-    var expression = this.expression;
     if(this.isGlobal){
         $A.expressionService.addListener(this,key,cmp);
         return;
     }
+    var valueProvider=this.valueProvider;
+    var expression = this.expression;
     if(valueProvider.addValueHandler&&(valueProvider!==cmp||expression!==key)) {
         if(!method){
             method=function PropertyReferenceValue$changeHandler(event) {
@@ -103,13 +109,12 @@ PropertyReferenceValue.prototype.addChangeHandler=function(cmp, key, method, reb
  * @export
  */
 PropertyReferenceValue.prototype.removeChangeHandler=function(cmp, key){
-    var valueProvider=this.valueProvider;
-    var expression = this.expression;
-    
     if(this.isGlobal){
         $A.expressionService.removeListener(this,key,cmp);
         return;
     }
+    var valueProvider=this.valueProvider;
+    var expression = this.expression;
     if (!valueProvider) {
         return;
     }
@@ -149,7 +154,7 @@ PropertyReferenceValue.prototype.getReference = function(path) {
         expression = valueProvider.getExpression(expression);
         valueProvider=valueProvider.getComponent();
     }
-    return valueProvider.getReference(expression + "." + path);
+    return valueProvider ? valueProvider.getReference(expression + "." + path) : null;
 };
 
 PropertyReferenceValue.prototype.equals = function (target){

@@ -15,7 +15,13 @@
  */
 package org.auraframework.integration.test.root.parser.handler;
 
-import org.auraframework.def.*;
+import java.util.List;
+
+import org.auraframework.def.ApplicationDef;
+import org.auraframework.def.ComponentDef;
+import org.auraframework.def.DefDescriptor;
+import org.auraframework.def.Definition;
+import org.auraframework.def.DependencyDef;
 import org.auraframework.impl.AuraImplTestCase;
 import org.auraframework.impl.root.component.ComponentDefImpl;
 import org.auraframework.test.source.StringSourceLoader;
@@ -23,10 +29,7 @@ import org.auraframework.test.source.StringSourceLoader.NamespaceAccess;
 import org.auraframework.throwable.NoAccessException;
 import org.auraframework.throwable.quickfix.QuickFixException;
 import org.auraframework.util.test.annotation.UnAdaptableTest;
-import org.junit.Ignore;
 import org.junit.Test;
-
-import java.util.List;
 
 @UnAdaptableTest("namespace start with c means something special in core")
 public class ComponentAccessAttributeEnforcementTest extends AuraImplTestCase {
@@ -2082,13 +2085,22 @@ public class ComponentAccessAttributeEnforcementTest extends AuraImplTestCase {
 
     @Test
     public void testComponentDependencyWildCardIncludesOnlyAccessibleComponents() throws Exception {
-        //create component with custom namespace
+        //create component with custom namespace        
         String cmpTemplate = "<aura:component %s/>";
 
-        DefDescriptor<? extends Definition> cmpGlobalDescriptor = getAuraTestingUtil().addSourceAutoCleanup(ComponentDef.class, String.format(cmpTemplate, "access='Global'"),
-                StringSourceLoader.ANOTHER_CUSTOM_NAMESPACE + ":testcomponent", NamespaceAccess.CUSTOM);
-        DefDescriptor<? extends Definition> cmpInternalDescriptor = getAuraTestingUtil().addSourceAutoCleanup(ComponentDef.class, String.format(cmpTemplate, ""),
-                StringSourceLoader.ANOTHER_CUSTOM_NAMESPACE + ":testcomponent", NamespaceAccess.CUSTOM);
+        // add a global component
+        getAuraTestingUtil().addSourceAutoCleanup(
+                ComponentDef.class,
+                String.format(cmpTemplate, "access='Global'"),
+                StringSourceLoader.ANOTHER_CUSTOM_NAMESPACE + ":testcomponent",
+                NamespaceAccess.CUSTOM);
+
+        // add an internal component
+        getAuraTestingUtil().addSourceAutoCleanup(
+                ComponentDef.class,
+                String.format(cmpTemplate, ""),
+                StringSourceLoader.ANOTHER_CUSTOM_NAMESPACE + ":testcomponent",
+                NamespaceAccess.CUSTOM);
 
         //create application with above component in markup
         String source = "<aura:component><aura:dependency resource='markup://" + StringSourceLoader.ANOTHER_CUSTOM_NAMESPACE + ":*'/></aura:component>";

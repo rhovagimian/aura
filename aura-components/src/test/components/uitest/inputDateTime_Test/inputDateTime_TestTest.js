@@ -74,8 +74,8 @@
             var openDatePickerEvt = dateTimePickerTest.getEvent("openPicker");
             $A.test.assertNotUndefinedOrNull(openDatePickerEvt, "Didn't find an openPicker event");
             openDatePickerEvt.fire();
-            var datePicker = dateTimePickerTest.find("datePicker").getElement();
             $A.test.addWaitFor(true, function () {
+                var datePicker = dateTimePickerTest.find("datePicker").getElement();
                 return $A.util.hasClass(datePicker, "visible")
             });
         }
@@ -100,7 +100,7 @@
         browsers: ['DESKTOP'],
         attributes: {value: '2015-10-23T16:30:00.000Z', dateFormat: 'MM-dd-yyyy', timeFormat: '', timezone: 'GMT'},
         test: function (cmp) {
-            this.checkInputTimeValue(cmp, '4:30:00 PM');
+            this.checkInputTimeValue(cmp, '4:30 PM');
         }
     },
 
@@ -135,7 +135,6 @@
         browsers: ['DESKTOP'],
         attributes: {value: '2015-10-23T16:30:00.000Z', dateFormat: 'MM-dd-yyyy', timeFormat: 'HH:mm', timezone: 'GMT'},
         test: [
-            // Walltime is loaded asyncly
             function setup(cmp) {
                 this.waitForInputTimeIsSet();
             },
@@ -343,6 +342,39 @@
     },
 
     /**
+     * Clear date and time by setting the value passed to the component to empty string
+     */
+    testClearDateTimeWithValue: {
+        browsers: ['DESKTOP'],
+        attributes: {
+            value: '2015-10-23T16:30:00.000Z',
+        },
+        test: [
+            function() {
+                this.waitForInputTimeIsSet();
+            },
+            function(cmp) {
+                var inputDateTimeCmp = cmp.find("dateTimePickerTest");
+                var inputDateElement = inputDateTimeCmp.find("inputDate").getElement();
+                var inputTimeElement = inputDateTimeCmp.find("inputTime").getElement();
+
+                $A.test.assertNotEquals("", inputDateElement.value, "Date value should not be empty");
+                $A.test.assertNotEquals("", inputTimeElement.value, "Time value should not be empty");
+
+                cmp.set("v.value", "");
+
+                $A.test.addWaitForWithFailureMessage("", function() {
+                    return inputDateElement.value;
+                }, "Date value should be empty");
+
+                $A.test.addWaitForWithFailureMessage("", function() {
+                    return inputTimeElement.value;
+                }, "Time value should be empty");
+            }
+        ]
+    },
+
+    /**
      * We have to ways that we need to get elements. Either from a output/select combo or from a header tag
      */
     getTextFromElm: function (cmp) {
@@ -352,13 +384,13 @@
     openDatePicker: function (cmp) {
         var opener = cmp.find("dateTimePickerTest").find("datePickerOpener").getElement();
         var inputBox = cmp.find("dateTimePickerTest").find("inputDate").getElement();
-        var datePicker = cmp.find("dateTimePickerTest").find("datePicker").getElement();
         if ($A.util.isUndefinedOrNull(opener)) {
             $A.test.clickOrTouch(inputBox);
         } else {
             $A.test.clickOrTouch(opener);
         }
         $A.test.addWaitFor(true, function () {
+            var datePicker = cmp.find("dateTimePickerTest").find("datePicker").getElement();
             return $A.util.hasClass(datePicker, "visible")
         });
     },
@@ -374,8 +406,6 @@
 
     /**
      * Wait for input time value is set in input filed.
-     * Since Walltime is loaded asynchronously, it needs to wait for the given value is ready
-     * before testing.
      */
     waitForInputTimeIsSet: function() {
         var inputElements = $A.test.getElementByClass("date_input_box input");

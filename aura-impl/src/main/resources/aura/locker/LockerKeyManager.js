@@ -33,11 +33,22 @@ var ls_getKey,
     ls_isOpaque,
     ls_unwrap,
     ls_addToCache,
-    ls_getFromCache;
+    ls_getFromCache,
+    ls_isProxy,
+    ls_registerProxy;
 
 (function LockerKeyManager() {
+	var substituteMapForWeakMap = false;
+	if (typeof WeakMap !== "undefined" && typeof Proxy !== "undefined") {
+		// Test for the Edge weakmap with proxies bug https://github.com/Microsoft/ChakraCore/issues/1662
+		var map = new WeakMap();
+		var proxyAsKey = new Proxy({}, {});
+		map.set(proxyAsKey, true);
+		substituteMapForWeakMap = map.get(proxyAsKey) !== true;
+	}
+	
     function newWeakMap() {
-        return typeof WeakMap !== "undefined" ? new WeakMap() : {
+        return typeof WeakMap !== "undefined" ? (!substituteMapForWeakMap ? new WeakMap() : new Map()) : {
             /* WeakMap dummy polyfill */
             "get" : function() {
                 return undefined;
@@ -65,6 +76,7 @@ var ls_getKey,
     var secureToRaw = newWeakMap(); 
     var opaqueSecure = newWeakMap();
     var objectToKeyedData = newWeakMap();  
+    var isSecureProxy = newWeakMap();
 
     // ALL METHODS BELOW USE KEY ONLY
 
@@ -149,7 +161,7 @@ var ls_getKey,
     ls_getRef = function(st, key, skipOpaque) {
         var toKey = keychain.get(st);
         if (toKey !== key || (skipOpaque && opaqueSecure.get(st))) {
-            throw new Error("Access denied: " + JSON.stringify({
+        	throw new Error("Access denied: " + JSON.stringify({
                 from : key,
                 to : toKey
             }));
@@ -211,11 +223,27 @@ var ls_getKey,
 
     /**
      * LockerService internal API.
-     * Verify access and retrieve the raw object,
-     * optionally verifying whether the object is opaque.
+     * Returns whether or not the provided object represents a secure proxy/wrapper.
+     */
+    ls_isProxy = function(st) {
+        return isSecureProxy.get(st) === true;
+    };
+    
+    /**
+     * LockerService internal API.
+     * Track the fact that st is a secure proxy or wrapper class.
+     */
+    ls_registerProxy = function(st) {
+        isSecureProxy.set(st, true);
+    };
+    
+    
+    /**
+     * LockerService internal API.
+     * Verify access and retrieve the raw object.
      * This method is used when the key is not known.
      */
-    ls_unwrap = function(from, st, skipOpaque) {
+    ls_unwrap = function(from, st) {
     	if (!st) {
     		return st;
     	}
@@ -223,17 +251,27 @@ var ls_getKey,
         var key = keychain.get(from);        
         var ref;
         
-        // If this is an array then write back to the raw object
         if (Array.isArray(st)) {
         	// Only getRef on "secure" arrays
-        	ref = secureToRaw.get(st) ? ls_getRef(st, key, skipOpaque) : [];
-        	ref.length = 0;
-        	
-        	for (var n = 0; n < st.length; n++) {
-        		ref.push(ls_unwrap(from, st[n], skipOpaque));
+        	if (secureToRaw.get(st)) {
+                // Secure array - reconcile modifications to the filtered clone with the actual array
+        		ref = ls_getRef(st, key);
+        		
+        		var originalLength = ref.length;
+        		var insertIndex = 0;
+        		for (var n = 0; n < st.length; n++) {
+        			// Find the next available location that corresponds to the filtered projection of the array
+        			while (insertIndex < originalLength && ls_getKey(ref[insertIndex]) !== key) {
+        				insertIndex++;
+        			}
+        			
+        			ref[insertIndex++] = ls_unwrap(from, st[n]);
+        		}
+        	} else {
+        		ref = [];
         	}
         } else {
-        	ref = ls_getRef(st, key, skipOpaque);
+        	ref = ls_getRef(st, key);
         }
         
         return ref;

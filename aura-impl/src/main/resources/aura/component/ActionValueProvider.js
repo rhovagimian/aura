@@ -29,26 +29,33 @@ ActionValueProvider.prototype.get = function(key) {
         actionDef = this.component['controller'] && this.component['controller'][key];
         if (actionDef) {
             actionDef = new ActionDef({
-                "descriptor": this.component.getName() + "$controller$" + key,
+                "descriptor": this.component.getType() + "$controller$" + key,
                 "name": key,
                 "actionType": "CLIENT",
                 "code": actionDef
             });
 
-            try {
-                this.controllerDef.getActionDef(key);
-                var message = "Component '" + this.component.getName() + "' has server and client action name conflicts: " + key;
+            //#if {"excludeModes" : ["PRODUCTION"]}
+            if (this.controllerDef && this.controllerDef.hasActionDef(key)) {
+                var message = "Component '" + this.component.getType() + "' has server and client action name conflicts: " + key;
                 $A.warning(message);
-            } catch(e) {
-                // this means there's no such action on the server side
             }
+            //#end
         } else {
             actionDef = this.controllerDef && this.controllerDef.getActionDef(key);
         }
 
-        $A.assert(actionDef, "Unknown controller action '"+key+"'");
+        if (!actionDef) {
+            var auraError = new $A.auraError("Unknown controller action '"+key+"'");
+            auraError["component"] = this.component.getDef().getDescriptor().toString();
+            auraError["componentStack"] = $A.util.getComponentHierarchy(this.component);
+            throw auraError;
+        }
 
         this.actions[key] = actionDef;
     }
     return actionDef.newInstance(this.component);
 };
+
+
+Aura.Component.ActionValueProvider = ActionValueProvider;

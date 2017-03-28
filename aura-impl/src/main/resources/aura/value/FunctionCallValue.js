@@ -61,31 +61,32 @@ FunctionCallValue.prototype.isDirty = function(){
  */
 FunctionCallValue.prototype.evaluate = function(valueProvider){
     $A.getContext().setCurrentAccess(this.context);
-    var result = this.code.call(null, valueProvider || this.valueProvider, this.expressionFunctions);
-    if(!this.hasOwnProperty("result")){
-        this["result"]=result;
+    try {
+        var result = this.code.call(null, valueProvider || this.valueProvider, this.expressionFunctions);
+        if(!this.hasOwnProperty("result")){
+            this["result"]=result;
+        }    
+        return result;
+    } finally {
+        $A.getContext().releaseCurrentAccess();
     }
-    $A.getContext().releaseCurrentAccess();
-    return result;
 };
 
 /**
  * @export
  */
 FunctionCallValue.prototype.addChangeHandler=function(cmp, key, fcv) {
-    if(this.byValue){
+    if (this.byValue) {
         return;
     }
-    if(!fcv){
-        fcv=this;
-    }
+
     for (var i = 0; i < this.args.length; i++) {
         var arg = this.args[i];
         if (aura.util.isExpression(arg)) {
-            if(arg instanceof PropertyReferenceValue) {
-                arg.addChangeHandler(cmp, key, this.getChangeHandler(cmp, key, fcv));
+            if (arg instanceof PropertyReferenceValue) {
+                arg.addChangeHandler(cmp, key, fcv ? fcv : this.getChangeHandler(cmp, key, this));
             } else {
-                arg.addChangeHandler(cmp, key, fcv);
+                arg.addChangeHandler(cmp, key, fcv || this);
             }
         }
     }

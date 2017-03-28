@@ -15,15 +15,21 @@
  */
 ({
     init: function(component) {
+        // This is only needed for tests, we should update the tests to not use the models anymore and then
+        // this whole method can be removed
         var dataProvider = component.get("v.dataProvider[0]");
         if(dataProvider && dataProvider.getModel()) {
             component.set("v.items", dataProvider.get("m.items"));
+        }
+        var items = component.get("v.items");
+        if (items && items.length > 0) {
+            component.set("v.privateItems", items);
         }
     },
 
     fetchData: function (component, event, helper) {
         var superCmp   = component.getSuper(),
-            isExtended = superCmp.getDef().getDescriptor().getName() !== 'component',
+            isExtended = superCmp.getType() !== 'aura:component',
             argumentsParam  = event.getParam('arguments'),
             options    = argumentsParam.options,
             index      = argumentsParam.index,
@@ -121,5 +127,5 @@
     visibleChange: function(component, event, helper) {
         helper.setUpEvents(component, true);
     }
-    
+
 })// eslint-disable-line semi

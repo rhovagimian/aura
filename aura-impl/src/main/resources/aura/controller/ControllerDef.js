@@ -41,6 +41,13 @@ ControllerDef.prototype.getDescriptor = function(){
 };
 
 /**
+ * Check if an action def exists.
+ */
+ControllerDef.prototype.hasActionDef = function(key){
+    return this.actionDefs.hasOwnProperty(key);
+};
+
+/**
  * Gets the Action Definition.
  * @param {String} key The data key to look up on the element.
  * @returns {Object}
@@ -52,7 +59,7 @@ ControllerDef.prototype.getActionDef = function(key){
         var ae = new $A.auraError("Unable to find '"+key+"' on '"+this.descriptor+"'.", null, $A.severity.QUIET);
         // ControllerDef config descriptor uses compound:// so that it can find the right thing,
         // but error reporting only cares about the component name so replacing it with markup:// here.
-        ae.component = this.descriptor.replace("compound://", "markup://").replace(".", ":");
+        ae["component"] = this.descriptor.replace("compound://", "markup://").replace(".", ":");
         throw ae;
     }
     return action;

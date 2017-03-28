@@ -32,7 +32,7 @@ import org.auraframework.impl.root.GenericXmlElementImpl;
 import org.auraframework.impl.root.parser.handler.RootTagHandler;
 import org.auraframework.impl.root.parser.handler.genericxml.GenericXmlElementHandlerProvider;
 import org.auraframework.service.DefinitionService;
-import org.auraframework.system.Source;
+import org.auraframework.system.TextSource;
 import org.auraframework.throwable.quickfix.QuickFixException;
 import org.auraframework.util.AuraTextUtil;
 
@@ -60,7 +60,7 @@ public class DesignDefHandler extends RootTagHandler<DesignDef> {
         genericHandlerProvider = null;
     }
 
-    public DesignDefHandler(DefDescriptor<DesignDef> defDescriptor, Source<DesignDef> source, XMLStreamReader xmlReader,
+    public DesignDefHandler(DefDescriptor<DesignDef> defDescriptor, TextSource<DesignDef> source, XMLStreamReader xmlReader,
                             boolean isInInternalNamespace, DefinitionService definitionService,
                             ConfigAdapter configAdapter, DefinitionParserAdapter definitionParserAdapter,
                             GenericXmlElementHandlerProvider genericHandlerProvider) {
@@ -94,7 +94,7 @@ public class DesignDefHandler extends RootTagHandler<DesignDef> {
     }
 
     @Override
-    protected RootDefinitionBuilder<DesignDef> getBuilder() {
+    public RootDefinitionBuilder<DesignDef> getBuilder() {
         return builder;
     }
 
@@ -134,6 +134,10 @@ public class DesignDefHandler extends RootTagHandler<DesignDef> {
                     "<%s> can contain only tags.\nFound text: %s",
                     getHandledTag(), text));
         }
+    }
+
+    @Override
+    protected void finishDefinition() {
     }
 
     @Override

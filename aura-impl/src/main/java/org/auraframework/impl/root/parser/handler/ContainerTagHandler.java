@@ -17,10 +17,9 @@ package org.auraframework.impl.root.parser.handler;
 
 import org.auraframework.adapter.ConfigAdapter;
 import org.auraframework.adapter.DefinitionParserAdapter;
-import org.auraframework.def.BaseComponentDef;
-import org.auraframework.def.BaseComponentDef.WhitespaceBehavior;
 import org.auraframework.def.ComponentDefRef;
-import org.auraframework.def.ComponentDefRef.Load;
+import org.auraframework.def.DefinitionReference;
+import org.auraframework.def.DefinitionReference.Load;
 import org.auraframework.def.DefDescriptor;
 import org.auraframework.def.Definition;
 import org.auraframework.def.DefinitionAccess;
@@ -28,9 +27,10 @@ import org.auraframework.def.HtmlTag;
 import org.auraframework.def.RootDefinition;
 import org.auraframework.expression.PropertyReference;
 import org.auraframework.impl.DefinitionAccessImpl;
+import org.auraframework.impl.root.component.DefRefDelegate;
 import org.auraframework.service.DefinitionService;
 import org.auraframework.system.AuraContext;
-import org.auraframework.system.Source;
+import org.auraframework.system.TextSource;
 import org.auraframework.throwable.AuraRuntimeException;
 import org.auraframework.throwable.quickfix.DefinitionNotFoundException;
 import org.auraframework.throwable.quickfix.InvalidAccessValueException;
@@ -49,7 +49,6 @@ public abstract class ContainerTagHandler<T extends Definition> extends XMLHandl
     public static final String SCRIPT_TAG = "script";
     public static final String ATTRIBUTE_ACCESS = "access";
     protected final boolean isInInternalNamespace;
-    protected WhitespaceBehavior whitespaceBehavior = BaseComponentDef.DefaultWhitespaceBehavior;
     protected DefDescriptor<T> defDescriptor;
 
     protected final ConfigAdapter configAdapter;
@@ -63,13 +62,13 @@ public abstract class ContainerTagHandler<T extends Definition> extends XMLHandl
         this.definitionParserAdapter = null;
     }
 
-    public ContainerTagHandler(XMLStreamReader xmlReader, Source<?> source, boolean isInInternalNamespace,
+    public ContainerTagHandler(XMLStreamReader xmlReader, TextSource<?> source, boolean isInInternalNamespace,
                                DefinitionService definitionService, ConfigAdapter configAdapter,
                                DefinitionParserAdapter definitionParserAdapter) {
         this(null, xmlReader, source, isInInternalNamespace, definitionService, configAdapter, definitionParserAdapter);
     }
 
-    public ContainerTagHandler(DefDescriptor<T> defDescriptor, XMLStreamReader xmlReader, Source<?> source,
+    public ContainerTagHandler(DefDescriptor<T> defDescriptor, XMLStreamReader xmlReader, TextSource<?> source,
                                boolean isInInternalNamespace, DefinitionService definitionService,
                                ConfigAdapter configAdapter, DefinitionParserAdapter definitionParserAdapter) {
         super(xmlReader, source, definitionService);
@@ -87,7 +86,6 @@ public abstract class ContainerTagHandler<T extends Definition> extends XMLHandl
         return defDescriptor;
     }
 
-
     @Override
     public void addExpressionReferences(Set<PropertyReference> propRefs) {
         // TODO: this should be a typed exception
@@ -95,24 +93,18 @@ public abstract class ContainerTagHandler<T extends Definition> extends XMLHandl
                 + " definition", propRefs.iterator().next().getLocation());
     }
 
-    @Override
-    public final T getElement() throws XMLStreamException, QuickFixException {
-        if (source.exists()) {
-            readElement();
+    public final void process() throws XMLStreamException, QuickFixException {
+        try {
+        readElement();
+        } finally {
+            finishDefinition();
         }
+    }
+
+    @Override
+    public final T getElement() throws QuickFixException, XMLStreamException {
+        process();
         return createDefinition();
-    }
-
-    public final T getErrorElement() throws QuickFixException {
-        return createDefinition();
-    }
-
-    public WhitespaceBehavior getWhitespaceBehavior() {
-        return whitespaceBehavior;
-    }
-
-    public void setWhitespaceBehavior(WhitespaceBehavior val) {
-        whitespaceBehavior = val;
     }
 
     protected DefinitionAccess readAccessAttribute() throws InvalidAccessValueException {
@@ -142,12 +134,16 @@ public abstract class ContainerTagHandler<T extends Definition> extends XMLHandl
         return false;
     }
 
-    /**
-     * Create and return the definition
-     *
-     * @throws QuickFixException
-     */
     protected abstract T createDefinition() throws QuickFixException;
+
+    /**
+     * A place to put on any finishing touches that are needed.
+     *
+     * this will always be called prior to creating the definition.
+     * Defined here as empty to allow extenders to not implement this at all.
+     */
+    protected void finishDefinition() throws QuickFixException {
+    }
 
     protected <P extends RootDefinition> ParentedTagHandler<? extends ComponentDefRef, ?> getDefRefHandler(
             RootTagHandler<P> parentHandler) throws DefinitionNotFoundException {
@@ -177,6 +173,15 @@ public abstract class ContainerTagHandler<T extends Definition> extends XMLHandl
             return new ComponentDefRefHandler<>(parentHandler, xmlReader, source, isInInternalNamespace,
                     definitionService, configAdapter, definitionParserAdapter);
         }
+    }
+
+    protected DefinitionReference createDefRefDelegate(ComponentDefRef defRef) throws DefinitionNotFoundException {
+        return new DefRefDelegate(defRef);
+    }
+
+    protected <P extends RootDefinition> DefinitionReference createDefRefDelegate(RootTagHandler<P> parentHandler)
+            throws QuickFixException, XMLStreamException {
+        return createDefRefDelegate(getDefRefHandler(parentHandler).getElement());
     }
 
     /**

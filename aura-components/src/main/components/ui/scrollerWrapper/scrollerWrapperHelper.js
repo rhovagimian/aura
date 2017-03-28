@@ -41,6 +41,48 @@
     enableUIScroller : function (event) {
         event.cancelScrolling = false;
         event.preventBounce = true;
-    }
+    },
+    getWrapperElement : function(cmp) {
+        return cmp.find("scrollerWrapper").getElement();
+    },
+    handleScrollTo : function (cmp, event) {
+        var params = event.getParam('arguments'),
+            dest    = params.destination,
+            x       = params.xcoord || 0,
+            y       = params.ycoord || 0;
 
+        if (dest) {            
+            var wrapper = this.getWrapperElement(cmp);
+
+            dest = dest.toLowerCase();
+            if (dest === 'custom') {
+                wrapper.scrollTop  = Math.abs(y);
+                wrapper.scrollLeft = Math.abs(x);
+            } else if (dest === 'top') {
+                wrapper.scrollTop = 0;
+            } else if (dest === 'left') {
+                wrapper.scrollLeft = 0;
+            } else if (dest === 'bottom') {
+                wrapper.scrollTop = wrapper.scrollHeight - wrapper.clientHeight;
+            } else if (dest === 'right') {
+                wrapper.scrollLeft = wrapper.scrollWidth - wrapper.clientWidth;
+            }
+        }
+    },
+    updateStyle : function (cmp) {
+        var height = cmp.get("v.height");
+        var width = cmp.get("v.width");
+
+        var styleDeclarations = [];
+
+        if (height) {
+            styleDeclarations.push('height:' + height);
+        }
+
+        if (width) {
+            styleDeclarations.push('width:' + width);
+        }
+
+        cmp.set("v.privateWrapperStyle", styleDeclarations.join(';'));
+    }
 }) // eslint-disable-line semi

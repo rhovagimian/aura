@@ -16,6 +16,11 @@
 
 package org.auraframework.integration.test.javascript.parser;
 
+import java.util.List;
+import java.util.Map;
+
+import javax.inject.Inject;
+
 import org.auraframework.adapter.ComponentLocationAdapter;
 import org.auraframework.components.AuraComponentsFiles;
 import org.auraframework.def.DefDescriptor;
@@ -23,7 +28,7 @@ import org.auraframework.def.DefDescriptor.DefType;
 import org.auraframework.def.TestCaseDef;
 import org.auraframework.def.TestSuiteDef;
 import org.auraframework.impl.AuraImplTestCase;
-import org.auraframework.impl.javascript.parser.JavascriptTestSuiteParser;
+import org.auraframework.impl.factory.JavascriptTestSuiteParser;
 import org.auraframework.impl.javascript.testsuite.JavascriptTestCaseDef;
 import org.auraframework.impl.javascript.testsuite.JavascriptTestSuiteDef;
 import org.auraframework.impl.source.BaseSourceLoader;
@@ -32,15 +37,11 @@ import org.auraframework.impl.source.resource.ResourceSourceLoader;
 import org.auraframework.impl.system.DefinitionImpl;
 import org.auraframework.service.DefinitionService;
 import org.auraframework.system.Source;
-import org.auraframework.throwable.AuraRuntimeException;
+import org.auraframework.system.TextSource;
 import org.auraframework.throwable.quickfix.QuickFixException;
 import org.auraframework.util.FileMonitor;
 import org.auraframework.util.ServiceLocator;
 import org.junit.Test;
-
-import javax.inject.Inject;
-import java.util.List;
-import java.util.Map;
 
 public class JavascriptTestSuiteParserTest extends AuraImplTestCase {
     @Inject
@@ -56,10 +57,10 @@ public class JavascriptTestSuiteParserTest extends AuraImplTestCase {
     public void testParse() throws Exception {
         DefDescriptor<TestSuiteDef> descriptor = definitionService.getDefDescriptor(
                 "js://test.testJSTestSuite", TestSuiteDef.class);
-        Source<TestSuiteDef> source = getJavascriptSourceLoader().getSource(descriptor);
+        TextSource<TestSuiteDef> source = getJavascriptSourceLoader().getSource(descriptor);
         // Step 1: Parse the source which refers to a simple component with a
         // reference to Javascript test suite
-        TestSuiteDef testSuite = new JavascriptTestSuiteParser().parse(descriptor, source);
+        TestSuiteDef testSuite = new JavascriptTestSuiteParser().getDefinition(descriptor, source);
         assertTrue(testSuite instanceof JavascriptTestSuiteDef);
         // Step 2: Gold file the Json output of the test suite object
         goldFileText(testSuite.getCode());
@@ -77,37 +78,26 @@ public class JavascriptTestSuiteParserTest extends AuraImplTestCase {
     public void testNullCases() throws Exception {
         DefDescriptor<TestSuiteDef> descriptor = definitionService.getDefDescriptor(
                 "js://test.testNoJSControllers", TestSuiteDef.class);
-        Source<TestSuiteDef> source = getJavascriptSourceLoader().getSource(descriptor);
-        boolean failed = false;
+        TextSource<TestSuiteDef> source = getJavascriptSourceLoader().getSource(descriptor);
         // Test case 1: Try to create a Source for a component which does not
         // have any javascript associated with it
         // getSource() call is looking for testNoJSControllersTest.js in the
         // component folder
-        try {
-            new JavascriptTestSuiteParser().parse(descriptor, source);
-            failed = true;
-        } catch (Exception e) {// Expect a file not found Exception
-            assertEquals(
-                    "Exception must be "
-                            + AuraRuntimeException.class.getSimpleName(),
-                    AuraRuntimeException.class, e.getClass());
-            e.getMessage().contains("testNoJSControllersTest.js");
-        }
-        assertFalse("Parser should have thrown and exception", failed);
+        assertNull("Source should be null for non-existent controller", source);
         // Test case 2: Null source
         try {
-            new JavascriptTestSuiteParser().parse(descriptor, null);
+            new JavascriptTestSuiteParser().getDefinition(descriptor, null);
             fail("should not load null source");
         } catch (Exception e) {
             checkExceptionFull(e, NullPointerException.class, null);
         }
         // Test Case 3: Null component descriptor
-        try {
+/*        try {
             new JavascriptTestSuiteParser().parse(null, source);
             fail("should not load null component descriptor");
         } catch (Exception e) {
             checkExceptionContains(e, AuraRuntimeException.class, "testNoJSControllers");
-        }
+        }*/
     }
 
     /**
@@ -119,11 +109,11 @@ public class JavascriptTestSuiteParserTest extends AuraImplTestCase {
 
         DefDescriptor<TestSuiteDef> descriptor = definitionService.getDefDescriptor(
                 "js://test.testJSTestSuite", TestSuiteDef.class);
-        Source<TestSuiteDef> source = getJavascriptSourceLoader().getSource(descriptor);
+        TextSource<TestSuiteDef> source = getJavascriptSourceLoader().getSource(descriptor);
 
         // Step 1: Parse the source which refers to a simple component with a
         // reference to Javascript test suite
-        TestSuiteDef testSuite = new JavascriptTestSuiteParser().parse(descriptor, source);
+        TestSuiteDef testSuite = new JavascriptTestSuiteParser().getDefinition(descriptor, source);
         assertTrue(testSuite instanceof JavascriptTestSuiteDef);
 
         // Step 2: Gold file the Json output of the test suite object
@@ -191,11 +181,11 @@ public class JavascriptTestSuiteParserTest extends AuraImplTestCase {
         DefDescriptor<TestSuiteDef> descriptor = definitionService.getDefDescriptor(
                 "js://test.testJSTestSuiteWithoutAttributes",
                 TestSuiteDef.class);
-        Source<TestSuiteDef> source = getJavascriptSourceLoader().getSource(descriptor);
+        TextSource<TestSuiteDef> source = getJavascriptSourceLoader().getSource(descriptor);
 
         // Step 1: Parse the source which refers to a simple component with a
         // reference to Javascript test suite
-        TestSuiteDef testSuite = new JavascriptTestSuiteParser().parse(descriptor, source);
+        TestSuiteDef testSuite = new JavascriptTestSuiteParser().getDefinition(descriptor, source);
         assertTrue(testSuite instanceof JavascriptTestSuiteDef);
 
         // Step 2: Verify the properties of the JavascriptTestSuiteDef object
@@ -257,8 +247,8 @@ public class JavascriptTestSuiteParserTest extends AuraImplTestCase {
 
     private void assertInvalidTestCase(String suiteContent, String expectedMessageStartsWith) throws Exception {
         DefDescriptor<TestSuiteDef> desc = addSourceAutoCleanup(TestSuiteDef.class, suiteContent);
-        Source<TestSuiteDef> source = getSource(desc);
-        TestSuiteDef d = new JavascriptTestSuiteParser().parse(desc, source);
+        TextSource<TestSuiteDef> source = (TextSource<TestSuiteDef>)getSource(desc);
+        TestSuiteDef d = new JavascriptTestSuiteParser().getDefinition(desc, source);
         try {
             d.validateDefinition();
             fail("Invalid testsuite: Every test case should have a function assigned to it");

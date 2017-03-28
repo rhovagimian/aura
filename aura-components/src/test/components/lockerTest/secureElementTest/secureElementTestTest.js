@@ -5,7 +5,8 @@
      */
 
     // LockerService not supported on IE
-    browsers: ["-IE8", "-IE9", "-IE10", "-IE11"],
+    // TODO(W-3674741,W-3674751): FF and iOS browser versions in autobuilds are too far behind
+    browsers: ["-IE8", "-IE9", "-IE10", "-IE11", "-FIREFOX", "-IPHONE", "-IPAD"],
 
     // TODO(tbliss): make these lists on SecureElement accessible here for maintainablility
     ElementPropertiesWhitelist: [
@@ -232,6 +233,18 @@
         }
     },
 
+    testLabelForInput: {
+        test: function(cmp) {
+            cmp.testLabelForInput();
+        }
+    },
+
+    testForAttributeAllowedOnLabelOnly: {
+        test: function(cmp) {
+            cmp.testForAttributeAllowedOnLabelOnly();
+        }
+    },
+
     //FIXME - goliver - "LI" : [ "value" ],
 
     //FIXME - goliver - "LINK" : [ "crossOrigin", "href", "hreflang", "media", "rel", "sizes", "title", "type" ],
@@ -403,25 +416,6 @@
         }
     },
 
-    /**
-     * The actual test code is in renderer where users can have SecureObject references.
-     */
-    testCallAppendChildWithOpaqueReference: {
-        attributes:{"testInRenderer": "testCallAppendChildWithOpaqueReference"},
-        test: function(cmp) {
-            var actual = cmp.get("v.text");
-            $A.test.assertStartsWith("Error: Access denied", actual);
-        }
-    },
-
-    testCallRemoveChildWithOpaqueReference: {
-        attributes:{"testInRenderer": "testCallRemoveChildWithOpaqueReference"},
-        test: function(cmp) {
-            var actual = cmp.get("v.text");
-            $A.test.assertStartsWith("Error: Access denied", actual);
-        }
-    },
-
     testInnerHTMLSupportsUseTagForSvgElement: {
         test: function(cmp) {
             cmp.testInnerHTMLSupportsUseTagForSvgElement();
@@ -568,6 +562,26 @@
         test: function(cmp) {
             cmp.testGetSetInvalidAttributes();
         }
-    }
+    },
 
+    testRecursiveTraversal: {
+        test: function(cmp) {
+            cmp.testRecursiveTraversal();
+        }
+    },
+    
+    testSuperRenderResultFiltering: {
+        test: function(cmp) {
+            var testUtils = cmp.get("v.testUtils");
+
+        	// Verify that all elements (owned by the locker and by system) are returned from render
+            var sentinel = document.querySelector(".stamp-success.uiStamp");
+            
+            testUtils.assertNotUndefinedOrNull(sentinel, "Unable to locate sentinel DOM element!");
+            testUtils.assertEquals("Sentinel For Rendering Tests", sentinel.textContent);
+                        
+            var secondSentinel = document.getElementById("secondSentinel");
+            testUtils.assertNotUndefinedOrNull(secondSentinel, "Unable to locate second sentinel DOM element!");
+            testUtils.assertEquals("Second Sentinel", secondSentinel.textContent);        }
+    }
 })

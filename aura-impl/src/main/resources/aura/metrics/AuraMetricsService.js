@@ -31,6 +31,14 @@ Aura.Services.MetricsService = function MetricsService() {
     this.doneBootstrap             = false;
     this.pluginsInitialized        = false;
     this.clearCompleteTransactions = true; // In PTEST Mode this is set to false (see initialize method)
+    
+    // Public constants used for flagging page transactions
+    this["PAGE_IN_DOM"] = "PageInDOM";
+    this["PAGE_HAS_ERROR"] = "PageHasError";
+    this["PAGE_NOT_LOADED"] = "PageNotLoaded";
+    this["PREVIOUS_PAGE_NOT_LOADED"] = "PreviousPageNotLoaded";
+    this["INTERACTION_BEFORE_PAGE_LOADED"] = "InteractionBeforePageLoaded";
+    this["PAGE_IN_BACKGROUND_BEFORE_LOADED"] = "PageInBackgroundBeforeLoaded";
 };
 
 // Version
@@ -182,6 +190,9 @@ Aura.Services.MetricsService.prototype.emitBootstrapTransaction = function () {
             this.transactionEnd('aura','bootstrap', function (transaction) {
                 // We need to override manually the duration to add the time before aura was initialized
                 var bootstrapStart = Aura.Services.MetricsService.PERFTIME ? 0 : transaction["pageStartTime"];
+
+                // Tab visibility at end of boot
+                bootstrap["visibilityStateEnd"] = document.visibilityState;
 
                 transaction["context"] = {
                     "eventType"   : "bootstrap",
@@ -487,6 +498,18 @@ Aura.Services.MetricsService.prototype.getCurrentPageTransaction = function () {
 };
 
 /**
+ * Merge the config of the current page transaction
+ * @export
+**/
+Aura.Services.MetricsService.prototype.updateCurrentPageTransaction = function (config) {
+    var trx = this.getCurrentPageTransaction();
+    if (trx) {
+        // i.e. override any values already present on existing config
+        trx["config"] = $A.util.apply(trx["config"], config, true /*forceCopy*/, true /*deepCopy*/);
+    }
+};
+
+/**
  * Returns a clone of the marks currently available on the collector
  * @export
 **/
@@ -534,8 +557,8 @@ Aura.Services.MetricsService.prototype.defaultPostProcessing = function (customM
             mark["context"]  = $A.util.apply(mark["context"] || {}, customMarks[i]["context"] || {});
             mark["duration"] = parseInt(customMarks[i]["ts"] - mark["ts"]);
             procesedMarks.push(mark);
-            delete mark["phase"];
-            delete queue[id];
+            mark["phase"] = 'stamp';
+            queue[id] = null;
         }
     }
     return procesedMarks;
@@ -817,7 +840,8 @@ Aura.Services.MetricsService.prototype.registerBeacon = function (beacon) {
     this.beaconProviders[beacon["name"] || Aura.Services.MetricsService.DEFAULT] = beacon["beacon"] || beacon;
 };
 /**
- * Summarizes perf timming request info
+ * Summarizes perf timing request info
+ * @param {PerformanceResourceTiming} r
  * @export
 */
 Aura.Services.MetricsService.prototype.summarizeResourcePerfInfo = function (r) {
@@ -831,9 +855,12 @@ Aura.Services.MetricsService.prototype.summarizeResourcePerfInfo = function (r) 
         "tcp"             : parseInt(r.connectEnd - r.connectStart, 10),
         "ttfb"            : parseInt(r.responseStart - r.startTime, 10),
         "transfer"        : parseInt(r.responseEnd - r.responseStart, 10),
-        "transferSize"    : r.transferSize || 0,
-        "encodedBodySize" : r.encodedBodySize || 0,
-        "decodedBodySize" : r.decodedBodySize || 0
+        // Note that these additional properties will need to be set using explicit strings
+        // the extern used in current version of closure-compiler doesn't list them out: 
+        // https://github.com/google/closure-compiler/blob/v20130411/externs/w3c_navigation_timing.js
+        "transferSize"    : r["transferSize"] || 0,
+        "encodedBodySize" : r["encodedBodySize"] || 0,
+        "decodedBodySize" : r["decodedBodySize"] || 0
     };
 };
 
@@ -851,6 +878,10 @@ Aura.Services.MetricsService.prototype.getBootstrapMetrics = function () {
         bootstrap[m] = parseInt(Aura["bootstrap"][m], 10);
     }
 
+    // allow non-numerics
+    bootstrap["visibilityStateStart"] = Aura["bootstrap"]["visibilityStateStart"];
+
+
     bootstrap["pageStartTime"] = pageStartTime;
 
     if (window.performance && performance.timing) {
@@ -858,7 +889,7 @@ Aura.Services.MetricsService.prototype.getBootstrapMetrics = function () {
         var p  = window.performance;
         var pt = p.timing;
 
-        if (!bootstrap["timming"]) {
+        if (!bootstrap["timing"]) {
             bootstrap["timing"] = {
                 "navigationStart" : pt.navigationStart,
                 "fetchStart"      : pt.fetchStart,
@@ -942,7 +973,7 @@ Aura.Services.MetricsService.prototype.getBootstrapMetrics = function () {
 
                     for (var i in frameworkRequests) {
                         if (resource.name.indexOf(frameworkRequests[i]) !== -1) {
-                            summaryRequest.name = frameworkRequests[i]; // mutate the proccessed resource
+                            summaryRequest.name = frameworkRequests[i]; // mutate the processed resource
                             bootstrap[i] = summaryRequest;
                             continue;
                         }

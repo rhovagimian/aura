@@ -163,6 +163,26 @@ Aura.Event.Event.prototype.getName = function(){
 };
 
 /**
+ * Gets the type of the Event definition, e.g. 'c:myEvent'.
+ * @returns {String} The event definition type
+ * @platform
+ * @export
+ */
+Aura.Event.Event.prototype.getType = function(){
+    return this.eventDef.getDescriptor().getFullName();
+};
+
+/**
+ * Gets the type of the Event, e.g. 'COMPONENT' or 'APPLICATION'.
+ * @returns {String} The event type
+ * @platform
+ * @export
+ */
+Aura.Event.Event.prototype.getEventType = function(){
+    return this.eventDef.getEventType();
+};
+
+/**
  * Sets parameters for the Event. Does not modify an event that has already been fired.
  * Maps key in config to attributeDefs.
  * @param {Object} config - The parameters for the Event.
@@ -210,7 +230,7 @@ Aura.Event.Event.prototype.setParam = function(key, value) {
 /**
  * Gets an Event parameter.
  * @param {String} name The name of the Event. For example, <code>event.getParam("button")</code> returns the value of the pressed mouse button (0, 1, or 2).
- * @returns {String} The parameter value
+ * @returns {Object} The parameter value
  * @platform
  * @export
  */
@@ -283,7 +303,9 @@ Aura.Event.Event.prototype.executeHandlerIterator = function(handlerIterator) {
     var res = {};
     var value;
 
+    var context=$A.getContext();
     var isSystemError = this.eventDef.getDescriptor().toString() === "markup://aura:systemError";
+    var isCustomerError = this.eventDef.getDescriptor().toString() === "markup://aura:customerError";
     var isComponentEventType = this.getEventExecutionType() === "COMPONENT";
 
     while(!this.paused && !res.done) {
@@ -301,7 +323,7 @@ Aura.Event.Event.prototype.executeHandlerIterator = function(handlerIterator) {
             // update our phase
             this.phase = value.phase;
 
-            if(isSystemError) {
+            if(isSystemError || isCustomerError) {
                 // Special case... only wrap in try-catch for this type of event
                 try {
                     value.handler(this);
@@ -311,12 +333,14 @@ Aura.Event.Event.prototype.executeHandlerIterator = function(handlerIterator) {
 
                     // TODO: unregister this particular event handler here!
                     // cmpHandlers[j] = null;
-                    $A.warning("aura:systemError event handler failed", e);
+                    $A.warning("aura:systemError | aura:customerError event handler failed", e);
                     $A.logger.reportError(e);
                 }
             }
             else {
+                context.setCurrentAccess(value.cmp);
                 value.handler(this);
+                context.releaseCurrentAccess();
             }
         }
     }

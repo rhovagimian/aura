@@ -54,7 +54,7 @@ function lib(w) { //eslint-disable-line no-unused-vars
                 this.opts.infiniteLoadingConfig
             );
         },
-       _createInfiniteLoadingMarkup: function () {
+        _createInfiniteLoadingMarkup: function () {
             var il_container = w.document.createElement('div'),
                 label        = document.createElement('span'),
                 idleLabel    = this.opts.infiniteLoadingConfig.labelIdle;
@@ -62,7 +62,7 @@ function lib(w) { //eslint-disable-line no-unused-vars
             label.className        = CLASS_IDLE;
             label.textContent      = idleLabel;
             il_container.className = 'infinite-loading';
-            
+
             il_container.appendChild(label);
 
             return il_container;
@@ -76,35 +76,59 @@ function lib(w) { //eslint-disable-line no-unused-vars
                 return;
             }
 
-            if (ilConfig.autoFillPage) {
-                this.on('_refresh', thresholdCheck);
+            if (!(ilConfig.hasTemplate && ilConfig.templateIsManualLoad)) {
+                this.on('scrollMove', thresholdCheck);
+                this.on('scrollEnd', thresholdCheck);
+                this._itemsThreshold = this.items && this.items.length || 10;
             }
-
-            this.on('scrollMove', thresholdCheck);
-            this.on('scrollEnd',  thresholdCheck);
-            this._itemsThreshold = this.items && this.items.length || 10;
+            else if (ilConfig.hasTemplate) {
+                ilConfig.templateSetManualTriggerFn(function() {
+                    this._triggerInfiniteLoadingDataProvider();
+                }.bind(this));
+            }
 
             this._appendInfiniteLoading();
             this._setSize();
+
+            // option to automatically trigger data provider when a scrollbar 
+            // doesnt exist even though there are more data to load
+            if (ilConfig.autoFillPage) {
+                // initial loading might not fire a refresh event when user loads
+                // data before rendering
+                thresholdCheck.call(this);
+                this.on('_refresh', thresholdCheck);
+            }
         },
         _appendInfiniteLoading: function () {
-            var il_container = this._createInfiniteLoadingMarkup(),
-                target       = this.scroller;
+            var ilConfig = this.opts.infiniteLoadingConfig;
+            if (!ilConfig.hasTemplate) {
+                var il_container = this._createInfiniteLoadingMarkup(),
+                    target       = this.scroller;
 
-            target.appendChild(il_container);
+                target.appendChild(il_container);
 
-            this.ilDOM   = il_container;
-            this.ilLabel = il_container.firstChild;
-            this._ilSize = il_container.offsetHeight; //relayout
+                this.ilDOM   = il_container;
+                this.ilLabel = il_container.firstChild;
+                this._ilSize = il_container.offsetHeight; //relayout
+            }
+            else {
+                this.ilDOM = ilConfig.templateContainer;
+            }
         },
         _setState: function (loading) {
             this._loading = loading;
-            if (loading) {
-                this.ilDOM.classList.add(CLASS_LOADING);
-                this.ilLabel.textContent = this.opts.infiniteLoadingConfig.labelLoading;
-            } else {
-                this.ilDOM.classList.remove(CLASS_LOADING);
-                this.ilLabel.textContent = this.opts.infiniteLoadingConfig.labelIdle;
+            var ilConfig = this.opts.infiniteLoadingConfig;
+            if (ilConfig.hasTemplate) {
+                ilConfig.templateSetLoadingFn(loading);
+            }
+            else {
+                if (loading) {
+                    this.ilDOM.classList.add(CLASS_LOADING);
+                    this.ilLabel.textContent = this.opts.infiniteLoadingConfig.labelLoading;
+                } else {
+                    this.ilDOM.classList.remove(CLASS_LOADING);
+                    this.ilLabel.textContent = this.opts.infiniteLoadingConfig.labelIdle;
+                }
             }
         },
         _appendData: function (items) {
@@ -231,15 +255,23 @@ function lib(w) { //eslint-disable-line no-unused-vars
                 this.scroller.style.position = '';
             }.bind(this), 0);
         },
+        _setNoMoreData: function(noMoreData) {
+            this._ilNoMoreData = noMoreData;
+            var ilConfig = this.opts.infiniteLoadingConfig;
+            if (ilConfig.hasTemplate) {
+                ilConfig.templateSetHasMoreDataFn(!this._ilNoMoreData);
+            }
+        },
         /* PUBLIC API */
         fetchData: function () {
             this._triggerInfiniteLoadingDataProvider();
         },
         unlockFetchData: function () {
-            this._ilNoMoreData = false;
+            this._setNoMoreData(false);
+            this._ilFetchingData = false;
         },
         lockFetchData: function () {
-            this._ilNoMoreData = true;
+            this._setNoMoreData(true);
         },
         updateLabels:function(payload) {
             if (typeof (payload.labelIdle) !== "undefined") {

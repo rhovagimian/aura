@@ -34,10 +34,13 @@ import org.auraframework.def.ApplicationDef;
 import org.auraframework.def.ComponentDef;
 import org.auraframework.def.DefDescriptor;
 import org.auraframework.def.Definition;
+import org.auraframework.def.module.ModuleDef;
 import org.auraframework.impl.cache.CacheImpl;
 import org.auraframework.impl.system.DefDescriptorImpl;
 import org.auraframework.service.CachingService;
 import org.auraframework.system.DependencyEntry;
+import org.auraframework.system.RegistrySet;
+import org.auraframework.system.RegistrySet.RegistrySetKey;
 import org.auraframework.system.SourceListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -52,7 +55,7 @@ public class CachingServiceImpl implements CachingService {
     private final static int DEFINITION_CACHE_SIZE = 100 * 1024;
 
     /** Default size of dependency caches, in number of entries */
-    private final static int DEPENDENCY_CACHE_SIZE = 4 * 1024;
+    private final static int DEPENDENCY_CACHE_SIZE = 8 * 1024;
 
     /** Default size of descriptor filter caches, in number of entries */
     private final static int FILTER_CACHE_SIZE = 4608;
@@ -63,6 +66,9 @@ public class CachingServiceImpl implements CachingService {
 
     /** Default size of client lib caches, in number of entries */
     private final static int CLIENT_LIB_CACHE_SIZE = 30;
+    
+    /** Default size of registry sets, in number of entries */
+    private final static int REGISTRY_SET_CACHE_SIZE = 100;
 
     @Configuration
     public static class BeanConfiguration {
@@ -90,9 +96,16 @@ public class CachingServiceImpl implements CachingService {
     private Cache<String, String> stringsCache;
     private Cache<String, String> altStringsCache;
     private Cache<String, Set<DefDescriptor<?>>> descriptorFilterCache;
+    /**
+     * depsCache contains multiple entries for dependencies.
+     * One entry for component dependencies and another for module
+     * plus with and without uid for faster lookups
+     * However, most values will point to the same DependencyEntry where modules are not used.
+     */
     private Cache<String, DependencyEntry> depsCache;
     private Cache<String, String> clientLibraryOutputCache;
     private Cache<DefDescriptor.DescriptorKey, DefDescriptor<? extends Definition>> defDescriptorByNameCache;
+    private Cache<RegistrySet.RegistrySetKey, RegistrySet> registrySetCache;
 
     private static final Logger logger = Logger.getLogger(CachingServiceImpl.class);
 
@@ -172,6 +185,18 @@ public class CachingServiceImpl implements CachingService {
                         .setConcurrencyLevel(20)
                         .setName("defDescByNameCache")
                         .build();
+        
+        size = getCacheSize("aura.cache.registrySetCacheSize", REGISTRY_SET_CACHE_SIZE);
+        registrySetCache = 
+               this.<RegistrySet.RegistrySetKey, RegistrySet> getCacheBuilder()
+                   .setInitialSize(size)
+                   .setLoggingAdapter(loggingAdapter)
+                   .setMaximumSize(size)
+                   .setSoftValues(true)
+                   .setName("registrySetCache")
+                   .setRecordStats(true)
+                   .build();
+        
     }
 
     @Override
@@ -213,7 +238,12 @@ public class CachingServiceImpl implements CachingService {
     public final Cache<DefDescriptor.DescriptorKey, DefDescriptor<? extends Definition>> getDefDescriptorByNameCache() {
         return defDescriptorByNameCache;
     }
-
+    
+    @Override
+    public Cache<RegistrySetKey, RegistrySet> getRegistrySetCache() {
+        return registrySetCache;
+    }
+    
     @Override
     public Lock getReadLock() {
         return rwLock.readLock();
@@ -273,12 +303,13 @@ public class CachingServiceImpl implements CachingService {
     }
 
     private void invalidateSourceRelatedCaches(DefDescriptor<?> descriptor) {
-
+        
         depsCache.invalidateAll();
         descriptorFilterCache.invalidateAll();
         stringsCache.invalidateAll();
         altStringsCache.invalidateAll();
         clientLibraryOutputCache.invalidateAll();
+        registrySetCache.invalidateAll();
 
         if (descriptor == null) {
             defsCache.invalidateAll();
@@ -286,6 +317,7 @@ public class CachingServiceImpl implements CachingService {
         } else {
             DefDescriptor<ComponentDef> cdesc = new DefDescriptorImpl<>(descriptor, ComponentDef.class, "markup");
             DefDescriptor<ApplicationDef> adesc = new DefDescriptorImpl<>(descriptor, ApplicationDef.class, "markup");
+            DefDescriptor<ModuleDef> moduleDefDescriptor = new DefDescriptorImpl<>(descriptor, ModuleDef.class, "markup");
 
             defsCache.invalidate(descriptor);
             existsCache.invalidate(descriptor);
@@ -293,12 +325,12 @@ public class CachingServiceImpl implements CachingService {
             existsCache.invalidate(cdesc);
             defsCache.invalidate(adesc);
             existsCache.invalidate(adesc);
+            defsCache.invalidate(moduleDefDescriptor);
+            existsCache.invalidate(moduleDefDescriptor);
 
-            switch (descriptor.getDefType()) {
-            case INCLUDE:
-                invalidateSourceRelatedCaches(descriptor.getBundle());
-                break;
-            default:
+            DefDescriptor<?> bundleParent = descriptor.getBundle();
+            if (bundleParent != null) {
+                invalidateSourceRelatedCaches(bundleParent);
             }
         }
     }

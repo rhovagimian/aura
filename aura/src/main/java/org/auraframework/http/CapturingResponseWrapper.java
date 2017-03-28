@@ -27,6 +27,7 @@ public class CapturingResponseWrapper extends HttpServletResponseWrapper {
     private ByteArrayOutputStream buffer;
     private ServletOutputStream outputStream;
     private PrintWriter writer;
+    private String redirectUrl;
 
     public CapturingResponseWrapper(HttpServletResponse res) {
         super(res);
@@ -34,11 +35,15 @@ public class CapturingResponseWrapper extends HttpServletResponseWrapper {
 
     public String getCapturedResponseString() throws IOException {
         flushBuffer();
-        writer.flush();
-        outputStream.flush();
+        getWriter().flush();
+        getOutputStream().flush();
         return buffer.toString();
     }
 
+    public String getRedirectUrl() {
+        return this.redirectUrl;
+    }
+    
     @Override
     public ServletOutputStream getOutputStream() {
         if (outputStream == null) {
@@ -59,5 +64,11 @@ public class CapturingResponseWrapper extends HttpServletResponseWrapper {
             writer = new PrintWriter(getOutputStream());
         }
         return writer;
+    }
+    
+    @Override
+    public void sendRedirect(String location) throws IOException{
+        this.redirectUrl = location;
+        super.sendRedirect(location);
     }
 }

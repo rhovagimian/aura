@@ -21,14 +21,14 @@ import com.google.common.collect.Lists;
 import org.auraframework.adapter.ConfigAdapter;
 import org.auraframework.adapter.DefinitionParserAdapter;
 import org.auraframework.def.AttributeDef;
-import org.auraframework.def.ComponentDefRef;
+import org.auraframework.def.DefinitionReference;
 import org.auraframework.def.RootDefinition;
 import org.auraframework.def.TypeDef;
 import org.auraframework.impl.root.AttributeDefImpl;
 import org.auraframework.impl.root.AttributeDefRefImpl;
 import org.auraframework.impl.util.TextTokenizer;
 import org.auraframework.service.DefinitionService;
-import org.auraframework.system.Source;
+import org.auraframework.system.TextSource;
 import org.auraframework.throwable.quickfix.InvalidAccessValueException;
 import org.auraframework.throwable.quickfix.QuickFixException;
 import org.auraframework.util.AuraTextUtil;
@@ -60,7 +60,7 @@ public class AttributeDefHandler<P extends RootDefinition> extends ParentedTagHa
             ATTRIBUTE_SERIALIZE_TO).addAll(ALLOWED_ATTRIBUTES).build();
 
     private final AttributeDefImpl.Builder builder = new AttributeDefImpl.Builder();
-    private final List<ComponentDefRef> body = Lists.newArrayList();
+    private final List<DefinitionReference> body = Lists.newArrayList();
     private String defaultValue = null;
 
     private final Optional<String> defaultType;
@@ -76,13 +76,13 @@ public class AttributeDefHandler<P extends RootDefinition> extends ParentedTagHa
      * @param xmlReader The XMLStreamReader that the handler should read from. It is expected to be queued up to the
      *            appropriate position before getElement() is invoked.
      */
-    public AttributeDefHandler(ContainerTagHandler<P> parentHandler, XMLStreamReader xmlReader, Source<?> source,
+    public AttributeDefHandler(ContainerTagHandler<P> parentHandler, XMLStreamReader xmlReader, TextSource<?> source,
                                boolean isInInternalNamespace, DefinitionService definitionService,
                                ConfigAdapter configAdapter, DefinitionParserAdapter definitionParserAdapter) {
         this(parentHandler, xmlReader, source, null, isInInternalNamespace, definitionService, configAdapter, definitionParserAdapter);
     }
 
-    public AttributeDefHandler(ContainerTagHandler<P> parentHandler, XMLStreamReader xmlReader, Source<?> source,
+    public AttributeDefHandler(ContainerTagHandler<P> parentHandler, XMLStreamReader xmlReader, TextSource<?> source,
                                String defaultType, boolean isInInternalNamespace, DefinitionService definitionService,
                                ConfigAdapter configAdapter, DefinitionParserAdapter definitionParserAdapter) {
         super(parentHandler, xmlReader, source, isInInternalNamespace, definitionService, configAdapter, definitionParserAdapter);
@@ -134,8 +134,7 @@ public class AttributeDefHandler<P extends RootDefinition> extends ParentedTagHa
     }
 
     @Override
-    protected AttributeDefImpl createDefinition() throws QuickFixException {
-
+    protected void finishDefinition() throws QuickFixException {
         Object defaultObj = null;
         if (defaultValue != null) { // even it is an empty string or whitespace,
             // we should still set it in order to
@@ -155,7 +154,10 @@ public class AttributeDefHandler<P extends RootDefinition> extends ParentedTagHa
             atBuilder.setAccess(getAccess(isInInternalNamespace));
             builder.setDefaultValue(atBuilder.build());
         }
+    }
 
+    @Override
+    public AttributeDefImpl createDefinition() throws QuickFixException {
         return builder.build();
     }
 
@@ -168,7 +170,9 @@ public class AttributeDefHandler<P extends RootDefinition> extends ParentedTagHa
     protected void handleChildTag() throws XMLStreamException, QuickFixException {
         ContainerTagHandler<?> parentHandler = getParentHandler();
         if(parentHandler!=null) {
-            body.add(getDefRefHandler(getParentHandler()).getElement());
+            DefinitionReference dr = createDefRefDelegate(getParentHandler());
+            builder.setHasSwitchableReference(dr.hasSwitchableReference());
+            body.add(dr);
         }
     }
 

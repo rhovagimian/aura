@@ -19,11 +19,11 @@
         testUtils.assertEquals(0, children.length);
     },
 
-    testCreateScriptElementReturnsSecureScript: function(cmp) {
+    testCreateScriptElementReturnsSecureElement: function(cmp) {
         var testUtils = cmp.get("v.testUtils");
         var scriptElement = document.createElement("script");
-        testUtils.assertStartsWith("SecureScript", scriptElement.toString(), "Expected document.createElement(script)"
-                + " to return a SecureScript");
+        testUtils.assertStartsWith("SecureElement", scriptElement.toString(), "Expected document.createElement(script)"
+                + " to return a SecureElement");
     },
 
     testCreateTextNodeReturnsSecureElement: function(cmp) {
@@ -64,11 +64,35 @@
                 + " to return a SecureElement");
     },
 
-    testSecureDocumentCookie: function(cmp, event, helper) {
+    testSecureDocumentCookieFiltersSystemMode: function(cmp, event, helper) {
         var testUtils = cmp.get("v.testUtils");
         var systemModeCookie = event.getParam("arguments").cookie;
         var userModeCookie = document.cookie;
-        testUtils.assertEquals(systemModeCookie, userModeCookie);
+        testUtils.assertNotEquals(systemModeCookie, userModeCookie, "System mode cookie should be filtered out in user mode");
+    },
+
+    testCookiesIsolatedToNamespace: function(cmp) {
+        var testUtils = cmp.get("v.testUtils");
+        var otherNs = cmp.find("otherNs");
+        var newKey = "keyChild";
+
+        document.cookie = "key1=value1";
+        testUtils.assertTrue(document.cookie.indexOf("key1=value1") !== -1);
+        otherNs.addCookie(newKey);
+        testUtils.assertTrue(document.cookie.indexOf(newKey) === -1);
+    },
+
+    testCookiesAddRemove: function(cmp) {
+        var testUtils = cmp.get("v.testUtils");
+        var otherNs = cmp.find("otherNs");
+
+        document.cookie = "key1=value1";
+        testUtils.assertTrue(document.cookie.indexOf("key1=value1") !== -1);
+        document.cookie = "key2=value2";
+        testUtils.assertTrue(document.cookie.indexOf("key2=value2") !== -1);
+        document.cookie = "key1=;expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        testUtils.assertTrue(document.cookie.indexOf("key1=value1") === -1);
+        testUtils.assertTrue(document.cookie.indexOf("key2=value2") !== -1);
     },
 
     testDocumentTitle: function(cmp) {
@@ -98,8 +122,8 @@
             toLowerCase: function() { return 'a' },
             toString: function() { return 'script' }
         });
-        testUtils.assertStartsWith("SecureScriptElement", el.toString(), "createElement string coersion exploit should be blocked" +
-                " and a SecureScriptElement should be returned, but got " + el.toString());
+        testUtils.assertStartsWith("SecureElement", el.toString(), "createElement string coersion exploit should be blocked" +
+                " and a SecureElement should be returned, but got " + el.toString());
     },
 
     testCreateElementNSForSVGElement: function(cmp) {

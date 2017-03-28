@@ -22,5 +22,10 @@
 	emptyData : function(cmp, evt, helper) {
 		cmp.find("provider").set("v.empty", true);
 		cmp.find("provider").getEvent("provide").fire();
+	},
+	
+	sendTemplateMap : function(cmp, evt, helper) {
+	    helper.generateItemTemplates(cmp);
+	    cmp.find("list").set("v.templateMap", cmp.get("v.templateMap"));
 	}
 })

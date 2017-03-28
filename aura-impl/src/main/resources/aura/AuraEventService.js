@@ -22,7 +22,7 @@ function AuraEventService () {
     this.eventDispatcher   = {};
     this.eventDefRegistry  = {};
     this.savedEventConfigs = {};
-    this.componentReferenceMap = {};
+    this.componentHandlers = {};
 }
 
 AuraEventService.Phase = {
@@ -31,16 +31,15 @@ AuraEventService.Phase = {
     DEFAULT: "default"
 };
 
-/**
- * Returns qualified event name
- * @param {String} event Event name
- * @returns {String} qualified event name
- */
-AuraEventService.prototype.qualifyEventName = function(event) {
-    if (event.indexOf("://") === -1) {
-        event = "markup://" + event;
+AuraEventService.validatePhase=function(phase, defaultPhase){
+    if(phase){
+        if(phase!==AuraEventService.Phase.BUBBLE&&phase!==AuraEventService.Phase.CAPTURE&&phase!==AuraEventService.Phase.DEFAULT){
+            throw new Error("AuraEventService.validatePhase(): 'phase' must be omitted, or one of '"+AuraEventService.Phase.BUBBLE+"', '"+AuraEventService.Phase.CAPTURE+"', or '"+AuraEventService.Phase.DEFAULT+"'. Found '"+phase+"'.");
+        }
+    }else{
+        phase=defaultPhase||AuraEventService.Phase.DEFAULT;
     }
-    return event;
+    return phase;
 };
 
 /**
@@ -106,7 +105,7 @@ AuraEventService.prototype.getNewEvent = function(eventDefinition, eventName, so
  * @private
  */
 AuraEventService.prototype.collectBubblePath = function(cmp, queue, visited, isOwner) {
-    if(!cmp || !cmp.isValid()) {
+    if(!cmp || cmp.destroyed===1) {
         // we reached a dead end
         return queue;
     }
@@ -140,7 +139,7 @@ AuraEventService.prototype.collectBubblePath = function(cmp, queue, visited, isO
     // loop until we find the next level
     while(next) {
         next = next.getOwner();
-        if (next === cmp || !(next instanceof Component)) {
+        if (next === cmp || !($A.util.isComponent(next))) {
             // We are at the top-level now, so we are done
             break;
         }
@@ -160,11 +159,11 @@ AuraEventService.prototype.collectBubblePath = function(cmp, queue, visited, isO
     }
 
     if(cmp.isConcrete()) {
-        // After collecting the owner chain, check if this level's concrete component's containerComponent
+        // After collecting the owner chain, check if this level's concrete component's containing component
         // is from a different level itself. This occurs when cmp is passed as the facet value
-        // to its containerComponent (transcluded) by the containerComponent's value provider.
-        // e.g. <containerComponent><cur/></containerComponent>
-        var concreteCmpContainerComponent = cmp.getContainerComponent();
+        // to its containing component (transcluded) by the containing component's value provider.
+        // e.g. <container><cur/></container>
+        var concreteCmpContainerComponent = cmp.getContainer();
         if(concreteCmpContainerComponent) {
             // this containerComponent may be from a different component inheritance level
             // so collect its bubble path and insert it into the queue at queueIndex
@@ -446,7 +445,7 @@ AuraEventService.prototype.getComponentEventHandlers = function(evt, cmp, phase,
     var handlers;
     var eventName = evt.getName();
     // just get event handlers for this cmp, not its super(s)
-    var dispatcher = cmp.isValid() && cmp.getEventDispatcher();
+    var dispatcher = cmp.destroyed!==1 && cmp.getEventDispatcher();
     if (dispatcher) {
 
         // Complex component event handling lives here... be wary
@@ -520,7 +519,7 @@ AuraEventService.prototype.getComponentEventHandlers = function(evt, cmp, phase,
 AuraEventService.prototype.getNonBubblingComponentEventHandlers = function(cmp, evt, phase/*, isOwner*/) {
     var handlers;
     // just get event handlers for this cmp, not its super(s)
-    if(cmp.isValid() && cmp.getDef().getEventDef(evt.getName())) {
+    if(cmp.destroyed!==1 && cmp.getDef().getEventDef(evt.getName())) {
         var dispatcher = cmp.getEventDispatcher();
         if (dispatcher) {
             var handlersObj = dispatcher[evt.getName()];
@@ -720,7 +719,7 @@ AuraEventService.prototype.getPhasedApplicationEventHandlers = function(evt, cmp
     var globalId = cmp.globalId;
     var phasedEvtHandlers = [];
 
-    if(cmp.isValid()) {
+    if(cmp.destroyed!==1) {
         // collect handlers for the entire event definition hierarchy
         while (evtDef) {
             var qname = evtDef.getDescriptor().getQualifiedName();
@@ -818,7 +817,7 @@ AuraEventService.prototype.getAppEventHandlerIterator = (function() {
                             // Some handlers may be added programmatically with a globalId that is
                             // not a valid component id. If the handler is associated with a component,
                             // make sure the component is still valid.
-                            if(cmp && !cmp.isValid()) {
+                            if(cmp && cmp.destroyed===1) {
                                 delete defaultHandlersMap[globalId];
                                 continue;
                             }
@@ -1013,45 +1012,162 @@ AuraEventService.prototype.get = function(name, callback) {
     return newEvent;
 };
 
-/**
- * Adds an event handler.
- * @param {Object} config The data for the event handler
- * @memberOf AuraEventService
- * @public
- * @export
- */
-AuraEventService.prototype.addHandler = function(config) {
-    config["event"] = this.qualifyEventName(config["event"]);
-
-    var globalId = config["globalId"];
-    var handlers = this.eventDispatcher[config["event"]];
-    if (!handlers) {
-        this.eventDispatcher[config["event"]] = handlers = {};
+/* Evaluates an action expression and runs it
+* @private
+* */
+AuraEventService.prototype.expressionHandler=function(expression){
+    if(expression){
+        var expressionValue=expression;
+        var target=null;
+        if($A.util.isExpression(expressionValue)){
+            target=expressionValue.valueProvider;
+            expressionValue=expressionValue.evaluate();
+        }
+        if($A.util.isAction(expressionValue)) {
+            expressionValue.run();
+        }
+        if($A.util.isFunction(expressionValue)){
+            expressionValue(target);
+        }
     }
-    var phase = config["phase"] || "default";
+};
+
+/**
+ * Dynamically adds an application event handler for the specified event.
+ *
+ * @param {String} event The name of the event to handle, e.g. 'aura:applicationEvent'.
+ * @param {Function} handler A reference to the function or action to invoke when the event is fired, e.g., 'cmp.getReference("c.myAction")'.
+ * @param {String} phase The event bubbling phase for which to add the handler. Optional. If omitted, uses "default".
+ * @param {Boolean} includeFacets If true, attempt to catch events generated by components transcluded by facets, e.g. v.body.
+ *
+ * @export
+ * @platform
+ */
+AuraEventService.prototype.addEventHandler=function(event,handler,phase,includeFacets){
+    // Guards
+    if($A.util.isExpression(handler)){
+        var reference=handler;
+        handler=this.expressionHandler.bind(this,handler);
+        handler.reference=reference;
+    }
+    if(!$A.util.isFunction(handler)){
+        throw new Error("$A.addEventHandler: 'handler' must be a valid Function or a reference to a controller action, e.g., 'cmp.getReference(\"c.myAction\");'");
+    }
+    var component=$A.getContext()&&$A.getContext().getCurrentAccess();
+    var globalId=component&&component.globalId;
+    if(!globalId&&$A.finishedInit){
+        throw new Error("$A.addEventHandler: Unable to find current component target. Are you running in Aura scope?");
+    }
+    if(!globalId){
+        globalId="1:0"; //JBUCH: HACK: HARDCODED FIRST ID
+    }
+    event=DefDescriptor.normalize(event);
+    // JBUCH: TODO: VALIDATE THIS EVENT EXISTS BEFORE ADDING IT
+    // if(!this.getDef(event)){
+    //     throw new Error("AuraEventService.addEventHandler: 'event' must be a valid event descriptor. Unknown event '"+event+"'.");
+    // }
+    phase=AuraEventService.validatePhase(phase);
+
+    // Lazy initializations
+    var handlers = this.eventDispatcher[event];
+    if (!handlers) {
+        this.eventDispatcher[event] = handlers = {};
+    }
+
     var phaseHandlers = handlers[phase];
     if(!phaseHandlers) {
         handlers[phase] = phaseHandlers = {};
     }
 
     var cmpHandlers = phaseHandlers[globalId];
-    if (cmpHandlers === undefined) {
+    if (!cmpHandlers) {
         phaseHandlers[globalId] = cmpHandlers = [];
     }
-    var includeFacets = config["includeFacets"];
-    // $A.util.getBooleanValue isn't available here immediately
-    if(includeFacets !== undefined && includeFacets !== null &&
-        includeFacets !== false && includeFacets !== 0 &&
-        includeFacets !== "false" && includeFacets !== "" &&
-        includeFacets !== "f") {
-        config["handler"].includeFacets = true;
+    // Leak control map
+    if(!this.componentHandlers[globalId]) {
+        this.componentHandlers[globalId] = [];
     }
-    cmpHandlers.push(config["handler"]);
 
-    if(!this.componentReferenceMap[globalId]) {
-        this.componentReferenceMap[globalId] = [];
+    // Potentially extend scope of handler
+    if(includeFacets){
+        handler.includeFacets=true;
     }
-    this.componentReferenceMap[globalId].push({ "event": config["event"], "phase": phase });
+
+    // Discard duplicates
+    for(var i=0;i<cmpHandlers.length;i++){
+        if(cmpHandlers[i]===handler || (cmpHandlers[i].reference&&cmpHandlers[i].reference===handler.reference)){
+            return;
+        }
+    }
+
+    // Register handler and leak control
+    cmpHandlers.push(handler);
+    this.componentHandlers[globalId].push({ "event": event, "phase": phase });
+};
+
+/**
+ * Adds an event handler.
+ * @param {Object} config The data for the event handler
+ * @memberOf AuraEventService
+ * @public
+ * @export
+ * @deprecated use <code>addEventHandler</code> instead.
+ */
+AuraEventService.prototype.addHandler = function(config) {
+    //$A.deprecated("$A.eventService.addHandler(config) is no longer supported.","Please use $A.addEventHandler(event,handler,phase,includeFacets) instead.","2016/12/31","2017/07/13");
+    var includeFacets=config["includeFacets"];
+    includeFacets=includeFacets !== undefined && includeFacets !== null && includeFacets !== false && includeFacets !== 0 && includeFacets !== "false" && includeFacets !== "" && includeFacets !== "f";
+    var context=$A.getContext();
+    var component=$A.getComponent(config["globalId"]);
+    if(context&&component){
+        context.setCurrentAccess(component);
+    }
+    this.addEventHandler(config["event"],config["handler"],config["phase"],includeFacets);
+    if(context&&component){
+        context.releaseCurrentAccess();
+    }
+
+};
+
+/**
+ * Dynamically removes an application event handler for the specified event.
+ *
+ * @param {String} event The name of the event to remove, e.g. 'aura:applicationEvent'.
+ * @param {Function} handler A reference to the function or action to action to remove, e.g., 'cmp.getReference("c.handleApplicationEvent");'.
+ * @param {String} phase The event bubbling phase for which to remove the handler. Optional. If omitted, uses "default".
+ *
+ * @export
+ * @platform
+ */
+AuraEventService.prototype.removeEventHandler=function(event,handler,phase) {
+    // Guards
+    event = DefDescriptor.normalize(event);
+    phase = AuraEventService.validatePhase(phase);
+
+    var handlers=this.eventDispatcher[event];
+    if(handlers){
+        var phaseHandlers=handlers[phase];
+        if(phaseHandlers){
+            var component=$A.getContext()&&$A.getContext().getCurrentAccess();
+            var globalId=component&&component.globalId;
+            if(!globalId&&$A.finishedInit){
+                throw new Error("$A.removeEventHandler: Unable to find current component target. Are you running in Aura scope?");
+            }
+            if(!globalId){
+                globalId="1:0"; //JBUCH: HACK: HARDCODED FIRST ID
+            }
+            var cmpHandlers=phaseHandlers[globalId];
+            if(cmpHandlers){
+                for(var i=0;i<cmpHandlers.length;i++){
+                    if(cmpHandlers[i]===handler||cmpHandlers[i].reference===handler){
+                        delete cmpHandlers[i].reference;
+                        cmpHandlers.splice(i,1);
+                        break;
+                    }
+                }
+            }
+        }
+   }
 };
 
 /**
@@ -1062,7 +1178,9 @@ AuraEventService.prototype.addHandler = function(config) {
  * @export
  */
 AuraEventService.prototype.removeHandler = function(config) {
-    config["event"] = this.qualifyEventName(config["event"]);
+    //$A.deprecated("$A.eventService.removeHandler(config) is no longer supported.","Please use $A.removeEventHandler(event,handler,phase) instead.","2016/12/31","2017/07/13");
+
+    config["event"] = DefDescriptor.normalize(config["event"]);
 
     var handlers = this.eventDispatcher[config["event"]];
     if (handlers) {
@@ -1079,7 +1197,7 @@ AuraEventService.prototype.removeHandler = function(config) {
  * @param {String} globalId the id of the component.
  */
 AuraEventService.prototype.removeHandlersByComponentId = function(globalId) {
-    var references = this.componentReferenceMap[globalId];
+    var references = this.componentHandlers[globalId];
     if(references) {
         var dispatcher = this.eventDispatcher;
         for(var c=0,reference;c<references.length;c++) {
@@ -1088,7 +1206,7 @@ AuraEventService.prototype.removeHandlersByComponentId = function(globalId) {
                 delete dispatcher[reference["event"]][reference["phase"]][globalId];
             }
         }
-        delete this.componentReferenceMap[globalId];
+        delete this.componentHandlers[globalId];
     }
 };
 
@@ -1146,10 +1264,11 @@ AuraEventService.prototype.getDef = function(descriptor) {
         var context=$A.getContext();
         var contextCmp = context&&context.getCurrentAccess();
         var message="Access Check Failed! EventService.getEventDef():'" + definition.getDescriptor().toString() + "' is not visible to '" + contextCmp + "'.";
-        var ae = new $A.auraError(message);
-        ae.component = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
         if(context.enableAccessChecks) {
             if(context.logAccessFailures){
+                var ae = new $A.auraError(message);
+                ae["component"] = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
+                ae["componentStack"] = context && context.getAccessStackHierarchy();
                 $A.error(null, ae);
            }
             return null;
@@ -1179,13 +1298,15 @@ AuraEventService.prototype.hasDefinition = function(descriptor) {
         var context=$A.getContext();
         var contextCmp = context&&context.getCurrentAccess();
         var message="Access Check Failed! EventService.hasDefinition():'" + definition.getDescriptor().toString() + "' is not visible to '" + contextCmp + "'.";
-        var ae = new $A.auraError(message);
-        ae.component = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
+
         if(context.enableAccessChecks) {
-           if(context.logAccessFailures){
-               $A.error(null, ae);
-           }
-           return false;
+            if(context.logAccessFailures){
+                var ae = new $A.auraError(message);
+                ae["component"] = contextCmp && contextCmp.getDef().getDescriptor().getQualifiedName();
+                ae["componentStack"] = context && context.getAccessStackHierarchy();
+                $A.error(null, ae);
+            }
+            return false;
         }else{
             if(context.logAccessFailures){
                 $A.warning(message);
@@ -1322,7 +1443,7 @@ AuraEventService.prototype.saveEventConfig = function(config) {
  * @export
  */
 AuraEventService.prototype.hasHandlers = function(name) {
-    var qualifiedName = this.qualifyEventName(name);
+    var qualifiedName = DefDescriptor.normalize(name);
     var phases = this.eventDispatcher[qualifiedName];
     if(phases) {
         // If we added a handler, then removed it. The dispatcher will still have an entry for that event

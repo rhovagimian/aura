@@ -15,22 +15,24 @@
  */
 package org.auraframework.impl.source;
 
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
+import java.util.List;
+import java.util.Set;
+
+import javax.inject.Inject;
+
 import org.auraframework.adapter.ConfigAdapter;
 import org.auraframework.def.DefDescriptor;
 import org.auraframework.def.Definition;
 import org.auraframework.def.DescriptorFilter;
 import org.auraframework.impl.AuraImplTestCase;
 import org.auraframework.system.InternalNamespaceSourceLoader;
-import org.auraframework.system.Source;
 import org.auraframework.system.SourceLoader;
+import org.auraframework.system.TextSource;
 import org.auraframework.throwable.AuraRuntimeException;
 import org.junit.Test;
 
-import javax.inject.Inject;
-import java.util.List;
-import java.util.Set;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 
 public class SourceFactoryTest extends AuraImplTestCase {
     @Inject
@@ -87,11 +89,10 @@ public class SourceFactoryTest extends AuraImplTestCase {
             return Sets.newHashSet("VIP", "Guest");
         }
         @Override
-        public <D extends Definition> Source<D> getSource(DefDescriptor<D> descriptor) {return null;}
+        public <D extends Definition> TextSource<D> getSource(DefDescriptor<D> descriptor) {return null;}
         @Override
         public Set<DefDescriptor<?>> find(DescriptorFilter dm) {return null;}
-        @Override
-        public <T extends Definition> Set<DefDescriptor<T>> find(Class<T> primaryInterface, String prefix, String namespace) {return null;}
+        @Override public void reset() {}
     }
     
     //FriendlySourceLoader considered everything as internal namespace
@@ -105,11 +106,10 @@ public class SourceFactoryTest extends AuraImplTestCase {
             return Sets.newHashSet("Friend1", "Friend2");
         }
         @Override
-        public <D extends Definition> Source<D> getSource(DefDescriptor<D> descriptor) {return null;}
+        public <D extends Definition> TextSource<D> getSource(DefDescriptor<D> descriptor) {return null;}
         @Override
         public Set<DefDescriptor<?>> find(DescriptorFilter dm) {return null;}
-        @Override
-        public <T extends Definition> Set<DefDescriptor<T>> find(Class<T> primaryInterface, String prefix, String namespace) {return null;}
+        @Override public void reset() {}
     }
     //ExternalSourceLoader considered everything as non-internal namespace
     private class ExternalSourceLoader extends BaseSourceLoader{
@@ -118,10 +118,9 @@ public class SourceFactoryTest extends AuraImplTestCase {
             return Sets.newHashSet("Custom_1","Custom_2");
         }
         @Override
-        public <D extends Definition> Source<D> getSource(DefDescriptor<D> descriptor) {return null;}
+        public <D extends Definition> TextSource<D> getSource(DefDescriptor<D> descriptor) {return null;}
         @Override
         public Set<DefDescriptor<?>> find(DescriptorFilter dm) {return null;}
-        @Override
-        public <T extends Definition> Set<DefDescriptor<T>> find(Class<T> primaryInterface, String prefix, String namespace) {return null;}
+        @Override public void reset() {}
     }
 }

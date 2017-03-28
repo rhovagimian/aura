@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.auraframework.instance.BaseComponent;
-import org.auraframework.instance.Component;
+import org.auraframework.instance.Instance;
 import org.auraframework.throwable.quickfix.QuickFixException;
 
 public interface ComponentDefRefArray {
@@ -27,10 +27,10 @@ public interface ComponentDefRefArray {
 	 * Get the underlying contents of the list as a list of components to render.
 	 * @return
 	 */
-	List<ComponentDefRef> getList();
+	List<DefinitionReference> getList();
 	
-	List<Component> newInstance(BaseComponent<?, ?> fallbackValueProvider) throws QuickFixException;
+	List<Instance> newInstance(BaseComponent<?, ?> fallbackValueProvider) throws QuickFixException;
 	
-	List<Component> newInstance(BaseComponent<?, ?> fallbackValueProvider, Map<String, Object> extraProviders) throws QuickFixException;
+	List<Instance> newInstance(BaseComponent<?, ?> fallbackValueProvider, Map<String, Object> extraProviders) throws QuickFixException;
 	
 }

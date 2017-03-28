@@ -15,17 +15,31 @@
  */
 package org.auraframework.http.resource;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.util.Map;
+
+import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import org.auraframework.adapter.ConfigAdapter;
 import org.auraframework.adapter.ServletUtilAdapter;
 import org.auraframework.def.ApplicationDef;
+import org.auraframework.def.BaseComponentDef;
 import org.auraframework.def.DefDescriptor;
 import org.auraframework.def.DefDescriptor.DefType;
+import org.auraframework.instance.InstanceStack;
+import org.auraframework.service.ContextService;
 import org.auraframework.service.DefinitionService;
+import org.auraframework.service.InstanceService;
+import org.auraframework.system.AuraContext;
 import org.auraframework.system.AuraContext.Format;
+import org.auraframework.util.json.DefaultJsonSerializationContext;
 import org.auraframework.util.test.util.UnitTestCase;
 import org.junit.Test;
 import org.mockito.Mockito;
+
+import com.google.common.collect.Maps;
 
 public class BootstrapUnitTest extends UnitTestCase {
     @Test
@@ -53,10 +67,184 @@ public class BootstrapUnitTest extends UnitTestCase {
         verifyCacheHeaders(600, true);
     }
 
+    @Test
+    public void testWriteCsrfTokenIfManifestEnabled() throws Exception {
+        String jwtToken = "jwtToken";
+        String csrfToken = "specialCsrfToken";
+        Bootstrap bootstrap = new Bootstrap() {
+            @Override
+            protected Map<String, Object> getComponentAttributes(HttpServletRequest request) {
+                return Maps.newHashMap();
+            }
+
+            @Override
+            public Boolean loadLabels() {
+                return true;
+            }
+        };
+
+        HttpServletResponse response = Mockito.mock(HttpServletResponse.class);
+        StringWriter writer = new StringWriter();
+        Mockito.doReturn(new PrintWriter(writer)).when(response).getWriter();
+
+        HttpServletRequest request = Mockito.mock(HttpServletRequest.class);
+        Mockito.doReturn(jwtToken).when(request).getParameter("jwt");
+
+        ConfigAdapter configAdapter = Mockito.mock(ConfigAdapter.class);
+        Mockito.doReturn(true).when(configAdapter).validateBootstrap(jwtToken);
+        Mockito.doReturn(csrfToken).when(configAdapter).getCSRFToken();
+        Mockito.doReturn(true).when(configAdapter).isClientAppcacheEnabled();
+        bootstrap.setConfigAdapter(configAdapter);
+
+        ServletUtilAdapter servletUtilAdapter = Mockito.mock(ServletUtilAdapter.class);
+        bootstrap.setServletUtilAdapter(servletUtilAdapter);
+
+        InstanceService instanceService = Mockito.mock(InstanceService.class);
+        bootstrap.setInstanceService(instanceService);
+
+        @SuppressWarnings("unchecked")
+        DefDescriptor<? extends BaseComponentDef> appDescriptor = Mockito.mock(DefDescriptor.class);
+        ApplicationDef appDef = Mockito.mock(ApplicationDef.class);
+        DefinitionService definitionService = Mockito.mock(DefinitionService.class);
+        Mockito.doReturn(DefType.APPLICATION).when(appDescriptor).getDefType();
+        Mockito.doReturn(appDef).when(definitionService).getDefinition(appDescriptor);
+        Mockito.doReturn(appDef).when(definitionService).getUnlinkedDefinition(appDescriptor);
+        Mockito.doReturn(true).when(appDef).isAppcacheEnabled();
+        bootstrap.setDefinitionService(definitionService);
+
+        AuraContext context = Mockito.mock(AuraContext.class);
+        InstanceStack instanceStack = Mockito.mock(InstanceStack.class);
+        Mockito.doReturn(appDescriptor).when(context).getApplicationDescriptor();
+        Mockito.doReturn(new DefaultJsonSerializationContext(true, true)).when(context).getJsonSerializationContext();
+        Mockito.doReturn(instanceStack).when(context).getInstanceStack();
+
+        ContextService contextService = Mockito.mock(ContextService.class);
+        Mockito.doReturn(context).when(contextService).getCurrentContext();
+        bootstrap.setContextService(contextService);
+
+        bootstrap.initManifest();
+        bootstrap.write(request, response, context);
+
+        if (!writer.toString().contains("\"token\":\"" + csrfToken + "\"")) {
+            fail("Missing CSRF token in payload: " + writer.toString());
+        }
+        Mockito.verify(configAdapter, Mockito.times(1)).getCSRFToken();
+    }
+
+    @Test
+    public void testWriteNoCsrfTokenIfManifestDisabled() throws Exception {
+        Bootstrap bootstrap = new Bootstrap() {
+            @Override
+            protected Map<String, Object> getComponentAttributes(HttpServletRequest request) {
+                return Maps.newHashMap();
+            }
+
+            @Override
+            public Boolean loadLabels() {
+                return true;
+            }
+        };
+
+        HttpServletResponse response = Mockito.mock(HttpServletResponse.class);
+        StringWriter writer = new StringWriter();
+        Mockito.doReturn(new PrintWriter(writer)).when(response).getWriter();
+
+        HttpServletRequest request = Mockito.mock(HttpServletRequest.class);
+
+        ConfigAdapter configAdapter = Mockito.mock(ConfigAdapter.class);
+        Mockito.doReturn(false).when(configAdapter).isClientAppcacheEnabled();
+        bootstrap.setConfigAdapter(configAdapter);
+
+        DefinitionService definitionService = Mockito.mock(DefinitionService.class);
+        bootstrap.setDefinitionService(definitionService);
+
+        ServletUtilAdapter servletUtilAdapter = Mockito.mock(ServletUtilAdapter.class);
+        bootstrap.setServletUtilAdapter(servletUtilAdapter);
+
+        InstanceService instanceService = Mockito.mock(InstanceService.class);
+        bootstrap.setInstanceService(instanceService);
+
+        @SuppressWarnings("unchecked")
+        DefDescriptor<? extends BaseComponentDef> appDescriptor = Mockito.mock(DefDescriptor.class);
+        ApplicationDef appDef = Mockito.mock(ApplicationDef.class);
+        Mockito.doReturn(DefType.APPLICATION).when(appDescriptor).getDefType();
+        Mockito.doReturn(appDef).when(definitionService).getDefinition(appDescriptor);
+
+        AuraContext context = Mockito.mock(AuraContext.class);
+        InstanceStack instanceStack = Mockito.mock(InstanceStack.class);
+        Mockito.doReturn(appDescriptor).when(context).getApplicationDescriptor();
+        Mockito.doReturn(new DefaultJsonSerializationContext(true, true)).when(context).getJsonSerializationContext();
+        Mockito.doReturn(instanceStack).when(context).getInstanceStack();
+
+        bootstrap.write(request, response, context);
+
+        if (writer.toString().contains("\"token\":")) {
+            fail("CSRF token should not be in payload: " + writer.toString());
+        }
+        Mockito.verify(configAdapter, Mockito.never()).getCSRFToken();
+    }
+
+    @Test
+    public void testWriteReturns404IfRequestHasInvalidJwtToken() throws Exception {
+        String jwtToken = "jwtToken";
+        Bootstrap bootstrap = new Bootstrap() {
+            @Override
+            protected Map<String, Object> getComponentAttributes(HttpServletRequest request) {
+                return Maps.newHashMap();
+            }
+
+            @Override
+            public Boolean loadLabels() {
+                return true;
+            }
+        };
+
+        HttpServletResponse response = Mockito.mock(HttpServletResponse.class);
+        StringWriter writer = new StringWriter();
+        Mockito.doReturn(new PrintWriter(writer)).when(response).getWriter();
+
+        HttpServletRequest request = Mockito.mock(HttpServletRequest.class);
+        Mockito.doReturn(jwtToken).when(request).getParameter("jwt");
+
+        ConfigAdapter configAdapter = Mockito.mock(ConfigAdapter.class);
+        Mockito.doReturn(false).when(configAdapter).validateBootstrap(jwtToken);
+        bootstrap.setConfigAdapter(configAdapter);
+
+        DefinitionService definitionService = Mockito.mock(DefinitionService.class);
+        bootstrap.setDefinitionService(definitionService);
+
+        ServletUtilAdapter servletUtilAdapter = Mockito.mock(ServletUtilAdapter.class);
+        bootstrap.setServletUtilAdapter(servletUtilAdapter);
+
+        InstanceService instanceService = Mockito.mock(InstanceService.class);
+        bootstrap.setInstanceService(instanceService);
+
+        @SuppressWarnings("unchecked")
+        DefDescriptor<? extends BaseComponentDef> appDescriptor = Mockito.mock(DefDescriptor.class);
+        ApplicationDef appDef = Mockito.mock(ApplicationDef.class);
+        Mockito.doReturn(DefType.APPLICATION).when(appDescriptor).getDefType();
+        Mockito.doReturn(appDef).when(definitionService).getDefinition(appDescriptor);
+
+        AuraContext context = Mockito.mock(AuraContext.class);
+        InstanceStack instanceStack = Mockito.mock(InstanceStack.class);
+        Mockito.doReturn(appDescriptor).when(context).getApplicationDescriptor();
+        Mockito.doReturn(new DefaultJsonSerializationContext(true, true)).when(context).getJsonSerializationContext();
+        Mockito.doReturn(instanceStack).when(context).getInstanceStack();
+
+        bootstrap.write(request, response, context);
+
+        Mockito.verify(servletUtilAdapter, Mockito.times(1)).send404(Mockito.any(), Mockito.eq(request),
+                Mockito.eq(response));
+    }
+
     /**
      * Verify logic setting cache-related HTTP headers in response.
-     * @param expirationSetting expiration setting on the app definition
-     * @param shouldCache expect there is caching based on expiration setting. false means there should be no cache.
+     * 
+     * @param expirationSetting
+     *            expiration setting on the app definition
+     * @param shouldCache
+     *            expect there is caching based on expiration setting. false
+     *            means there should be no cache.
      * @throws Exception
      */
     private void verifyCacheHeaders(Integer expirationSetting, boolean shouldCache) throws Exception {

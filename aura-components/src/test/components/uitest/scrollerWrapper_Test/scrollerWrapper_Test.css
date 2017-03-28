@@ -13,13 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-.THIS.test {
-	font-size: 4rem;
-	height: 80%;
+.THIS {
+	font-size: 3rem;
+}
+
+.THIS .border {
 	border: solid 3px blue;
 }
 
-.THIS .scrollerSmall {
-	height: 50%;
-	border: solid 3px orange;
+.THIS .widebox {
+    width: 200vw;
 }

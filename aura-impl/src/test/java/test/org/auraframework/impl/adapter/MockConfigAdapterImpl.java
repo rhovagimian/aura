@@ -36,6 +36,7 @@ import org.auraframework.http.CSP;
 import org.auraframework.service.ContextService;
 import org.auraframework.service.InstanceService;
 import org.auraframework.system.AuraContext;
+import org.auraframework.system.AuraContext.Mode;
 import org.auraframework.test.TestContext;
 import org.auraframework.test.TestContextAdapter;
 import org.auraframework.test.adapter.MockConfigAdapter;
@@ -111,8 +112,15 @@ public class MockConfigAdapterImpl extends ConfigAdapterImpl implements MockConf
         public Collection<String> getScriptSources() {
             List<String> list = (List<String>) baseline.getScriptSources();
             AuraContext context = Aura.getContextService().getCurrentContext();
-            if (context != null && context.isTestMode()) {
-                list.add(CSP.UNSAFE_EVAL);
+            if (context != null) {
+                Mode mode = context.getMode();
+                // Webdriver's executeScript() needs unsafe-eval. We should find an alternative for
+                //our test-utils (e.g. AuraUITestingUtil.getRawEval()) and then remove this.
+                if(mode == Mode.AUTOJSTEST || mode == Mode.AUTOJSTESTDEBUG ||
+                		mode == Mode.STATS ||
+                        mode == Mode.SELENIUM || mode == Mode.SELENIUMDEBUG){
+                    list.add(CSP.UNSAFE_EVAL);
+                }
             }
             return list;
         }
@@ -171,7 +179,7 @@ public class MockConfigAdapterImpl extends ConfigAdapterImpl implements MockConf
                             "expressionTest", "forEachDefTest", "forEachTest", "handleEventTest", "ifTest",
                             "iterationTest", "listTest", "loadLevelTest", "perfTest", "performanceTest",
                             "renderingTest", "setAttributesTest", "test", "tokenSanityTest", "uitest", "utilTest",
-                            "updateTest", "whitespaceBehaviorTest", "appCache")
+                            "updateTest", "appCache")
                     .build();
 
     private static final Set<String> SYSTEM_TEST_PRIVILEGED_NAMESPACES = new ImmutableSortedSet.Builder<>(
@@ -191,6 +199,7 @@ public class MockConfigAdapterImpl extends ConfigAdapterImpl implements MockConf
     private ContentSecurityPolicy csp;
     private Consumer<String> csrfValidationFunction = null;
     private Supplier<String> csrfTokenFunction = null;
+	private Supplier<String> jwtTokenFunction = null;
     private Boolean isLockerServiceEnabledGlobally;
 
     public MockConfigAdapterImpl() {
@@ -209,6 +218,7 @@ public class MockConfigAdapterImpl extends ConfigAdapterImpl implements MockConf
         validateCss = null;
         csrfValidationFunction = null;
         csrfTokenFunction = null;
+        jwtTokenFunction = null;
         isLockerServiceEnabledGlobally = null;
     }
 
@@ -385,6 +395,20 @@ public class MockConfigAdapterImpl extends ConfigAdapterImpl implements MockConf
     	}
     }
 
+    @Override
+    public String generateJwtToken() {
+    	if (this.jwtTokenFunction != null) {
+    		return this.jwtTokenFunction.get();
+    	} else {
+    		return super.generateJwtToken();
+    	}
+    }
+    
+    @Override
+    public void setJwtToken(Supplier<String> tokenFunction) {
+    	this.jwtTokenFunction = tokenFunction;
+    }
+    
     @Override
     public void setLockerServiceEnabled(boolean enabled) {
 		isLockerServiceEnabledGlobally = enabled;

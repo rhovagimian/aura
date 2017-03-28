@@ -92,6 +92,7 @@ BaseComponent<D, I> {
     protected final ConverterService converterService;
 
     private final InstanceService instanceService;
+	private Instance<?> lexicalParent;
 
     /**
      * Top level component instance with attributes passed in. Builds out the tree recursively, but only after the
@@ -187,6 +188,7 @@ BaseComponent<D, I> {
         InstanceStack instanceStack = context.getInstanceStack();
         Instance<?> accessParent = instanceStack.getAccess();
 
+        this.lexicalParent = accessParent;
         this.descriptor = descriptor;
         this.originalDescriptor = descriptor;
         this.path = instanceStack.getPath();
@@ -265,6 +267,7 @@ BaseComponent<D, I> {
 
         BaseComponentDef def = getComponentDef();
 
+        // FIXME(goliver): what, pray tell, is this for
         DefDescriptor<RendererDef> rendererDesc = def.getRendererDescriptor();
         if ((rendererDesc != null && rendererDesc.getDef().isLocal())) {
             hasLocalDependencies = true;
@@ -530,6 +533,11 @@ BaseComponent<D, I> {
         return path;
     }
 
+    @Override
+    public Instance<?> getLexicalParent() {
+        return this.lexicalParent;
+    }
+    
     static private DefDescriptor<TypeDef> componentArrType;
     static private DefDescriptor<TypeDef> componentDefRefArrayType;
 

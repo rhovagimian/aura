@@ -17,14 +17,14 @@ package org.auraframework.impl.root.parser.handler.design;
 
 import org.auraframework.adapter.ConfigAdapter;
 import org.auraframework.adapter.DefinitionParserAdapter;
-import org.auraframework.def.ComponentDefRef;
+import org.auraframework.def.DefinitionReference;
 import org.auraframework.def.design.DesignAttributeDefaultDef;
 import org.auraframework.def.design.DesignDef;
 import org.auraframework.impl.design.DesignAttributeDefaultDefImpl;
 import org.auraframework.impl.root.parser.handler.ParentedTagHandler;
 import org.auraframework.impl.root.parser.handler.RootTagHandler;
 import org.auraframework.service.DefinitionService;
-import org.auraframework.system.Source;
+import org.auraframework.system.TextSource;
 import org.auraframework.throwable.quickfix.QuickFixException;
 import org.auraframework.util.AuraTextUtil;
 
@@ -41,7 +41,7 @@ public class DesignAttributeDefaultDefHandler extends ParentedTagHandler<DesignA
 
 
     public DesignAttributeDefaultDefHandler(RootTagHandler<DesignDef> parentHandler, XMLStreamReader xmlReader,
-                                            Source<?> source, boolean isInInternalNamespace,
+                                            TextSource<?> source, boolean isInInternalNamespace,
                                             DefinitionService definitionService,
                                             ConfigAdapter configAdapter, DefinitionParserAdapter definitionParserAdapter) {
         super(parentHandler, xmlReader, source, isInInternalNamespace, definitionService, configAdapter, definitionParserAdapter);
@@ -50,7 +50,7 @@ public class DesignAttributeDefaultDefHandler extends ParentedTagHandler<DesignA
 
     @Override
     protected void handleChildTag() throws XMLStreamException, QuickFixException {
-        ComponentDefRef ref = getDefRefHandler(getParentHandler()).getElement();
+        DefinitionReference ref = createDefRefDelegate(getParentHandler());
         //For now we only accept adding components to the default.
         if (AURA_HTML.equals(ref.getDescriptor().getQualifiedName())) {
             error("HTML tags are disallowed in attribute defaults, only components may be set.");
@@ -68,6 +68,10 @@ public class DesignAttributeDefaultDefHandler extends ParentedTagHandler<DesignA
     @Override
     public String getHandledTag() {
         return TAG;
+    }
+
+    @Override
+    protected void finishDefinition() {
     }
 
     @Override

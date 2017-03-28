@@ -5,7 +5,8 @@
      */
 
     // LockerService not supported on IE
-    browsers: ["-IE8", "-IE9", "-IE10", "-IE11"],
+    // TODO(W-3674741,W-3674751): FF and iOS browser versions in autobuilds are too far behind
+    browsers: ["-IE8", "-IE9", "-IE10", "-IE11", "-FIREFOX", "-IPHONE", "-IPAD"],
 
     setUp: function(cmp) {
         cmp.set("v.testUtils", $A.test);
@@ -23,9 +24,9 @@
         }
     },
 
-    testCreateScriptElementReturnsSecureScript: {
+    testCreateScriptElementReturnsSecureElement: {
         test: function(cmp) {
-            cmp.testCreateScriptElementReturnsSecureScript();
+            cmp.testCreateScriptElementReturnsSecureElement();
         }
     },
 
@@ -53,9 +54,33 @@
         }
     },
 
-    testSecureDocumentCookie: {
+    // remove cookies here in system mode to bypass Locker filtering logic
+    removeCookies: function() {
+        document.cookie = "foo=;expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        document.cookie = "LSKey[lockerTestOtherNamespace]keyChild=;expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        document.cookie = "LSKey[lockerTest]key1=;expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        document.cookie = "LSKey[lockerTest]key2=;expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    },
+
+    testSecureDocumentCookieFiltersSystemMode: {
         test: function(cmp) {
-            cmp.testSecureDocumentCookie(document.cookie);
+            $A.test.addCleanup(this.removeCookies);
+            document.cookie = "foo=bar";
+            cmp.testSecureDocumentCookieFiltersSystemMode(document.cookie);
+        }
+    },
+
+    testCookiesIsolatedToNamespace: {
+        test: function(cmp) {
+            $A.test.addCleanup(this.removeCookies);
+            cmp.testCookiesIsolatedToNamespace();
+        }
+    },
+
+    testCookiesAddRemove: {
+        test: function(cmp) {
+            $A.test.addCleanup(this.removeCookies);
+            cmp.testCookiesAddRemove();
         }
     },
 

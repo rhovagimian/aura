@@ -18,17 +18,25 @@ package org.auraframework.renderer;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.inject.Inject;
 
 import org.auraframework.Aura;
+import org.auraframework.adapter.ConfigAdapter;
 import org.auraframework.annotations.Annotations.ServiceComponentRenderer;
 import org.auraframework.def.AttributeDef;
 import org.auraframework.def.DefDescriptor;
+import org.auraframework.def.Definition;
 import org.auraframework.def.Renderer;
+import org.auraframework.def.RootDefinition;
 import org.auraframework.expression.Expression;
 import org.auraframework.instance.BaseComponent;
 import org.auraframework.instance.Component;
+import org.auraframework.instance.Instance;
+import org.auraframework.service.DefinitionService;
 import org.auraframework.service.RenderingService;
 import org.auraframework.system.RenderContext;
 import org.auraframework.throwable.quickfix.QuickFixException;
@@ -41,6 +49,12 @@ public class HtmlRenderer implements Renderer {
     @Inject
     RenderingService renderingService;
 
+    @Inject
+    ConfigAdapter configAdapter;
+
+    @Inject
+    DefinitionService definitionService;
+
     @SuppressWarnings("unchecked")
     @Override
     public void render(BaseComponent<?, ?> component, RenderContext rc) throws IOException, QuickFixException {
@@ -50,9 +64,53 @@ public class HtmlRenderer implements Renderer {
         boolean script = (tag != null && tag.equals("script") && body != null && body.size() > 0);
 
         if (script) {
+            int numParens = new Random().nextInt(128) + 1;
+            boolean lockerRequired = false;
+            String namespace = "";
+            Instance<?> parent = component.getLexicalParent();
+            if (parent != null) {
+                Definition def = definitionService.getDefinition(parent.getDescriptor());
+                namespace = def.getDescriptor().getNamespace();
+                lockerRequired = configAdapter.isLockerServiceEnabled() && configAdapter.requireLocker((RootDefinition) def);
+            }
+
             rc.pushScript();
+            if (lockerRequired) {
+                // if inline.js and framework are already loaded then we must be in the auraPreInitBlock so run immediately
+                // otherwise save the script to be run after necessary bootstrap files are loaded on client
+                rc.getCurrent().append(
+                        "(function(customerJs, namespace) {\n" +
+                        "    window.Aura || (window.Aura = {});\n" +
+                        "    Aura.inlineJsLocker || (Aura.inlineJsLocker = []);\n" +
+                        "    if(Aura.inlineJsReady && Aura.frameworkJsReady) {\n" +
+                        "        $A.lockerService.runScript(customerJs, namespace);\n" +
+                        "    } else {\n" +
+                        "        Aura.inlineJsLocker.push({namespace: namespace, callback: customerJs});\n" +
+                        "    }\n" +
+                        "})"
+                );
+                for (int i = 0; i < numParens; i++) {
+                    rc.getCurrent().append("(");
+                }
+                rc.getCurrent().append(
+                        "(function(){"
+                );
+            }
+
             for (Component nested: body) {
                 renderingService.render(nested, rc);
+            }
+
+            if (lockerRequired) {
+                rc.getCurrent().append(
+                        "}"
+                );
+                for (int i = 0; i < numParens; i++) {
+                    rc.getCurrent().append(")");
+                }
+                rc.getCurrent().append(
+                        ", '" + namespace + "');\n"
+                );
             }
             rc.popScript();
             return;

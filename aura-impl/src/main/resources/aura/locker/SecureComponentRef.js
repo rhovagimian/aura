@@ -38,8 +38,9 @@ function SecureComponentRef(component, key) {
         "isInstanceOf": SecureObject.createFilteredMethod(o, component, "isInstanceOf"),
         "isRendered": SecureObject.createFilteredMethod(o, component, "isRendered"),
         "isValid": SecureObject.createFilteredMethod(o, component, "isValid"),
-        "set": SecureObject.createFilteredMethod(o, component, "set"),
+        "set": SecureObject.createFilteredMethod(o, component, "set", { defaultKey: key, rawArguments: true }),
         "get": {
+            writable: true,
             enumerable: true,
             value: function(name) {
                 // protection against anything other then `cmp.get('v.something')`
@@ -56,18 +57,19 @@ function SecureComponentRef(component, key) {
     var defs = component.getDef().methodDefs;
     if (defs) {
         defs.forEach(function(method) {
-        	var descriptor = new DefDescriptor(method.name);
-    		SecureObject.addMethodIfSupported(o, component, descriptor.getName());
+            var descriptor = new DefDescriptor(method.name);
+            SecureObject.addMethodIfSupported(o, component, descriptor.getName(), { defaultKey: key });
         }, o);
     }
 
-    // DCHASMAN TODO Workaround for ui:button redfining addHandler using aura:method!!!
+    // DCHASMAN TODO Workaround for ui:button redefining addHandler using aura:method!!!
     if (!("addHandler" in o)) {
-		SecureObject.addMethodIfSupported(o, component, "addHandler");
+        SecureObject.addMethodIfSupported(o, component, "addHandler", { rawArguments: true });
     }
 
     ls_setRef(o, component, key);
     ls_addToCache(component, o, key);
+    ls_registerProxy(o);
 
     return Object.seal(o);
 }

@@ -44,7 +44,7 @@ import javax.inject.Inject;
 public class AuraServletCacheInvalidationHttpTest extends AuraHttpTestCase {
 
     @Inject
-    ConfigAdapter configAdapter;
+    private ConfigAdapter configAdapter;
 
     /**
      * Verify that AuraServlet returns an error code in the response body when
@@ -54,7 +54,7 @@ public class AuraServletCacheInvalidationHttpTest extends AuraHttpTestCase {
      */
     @Test
     public void testPostRequestWithDifferentUID() throws Exception {
-        HttpPost post = getPostMethod("auratest:test_TokenValidation", true);
+        HttpPost post = getPostMethod("aura:component", true);
         HttpResponse httpResponse = perform(post);                                                        // days
         int statusCode = getStatusCode(httpResponse);
         String response = getResponseBody(httpResponse);
@@ -72,7 +72,7 @@ public class AuraServletCacheInvalidationHttpTest extends AuraHttpTestCase {
     @AuraTestLabels("auraSanity")
     @Test
     public void testPostRequestWithValidUID() throws Exception {
-        HttpPost post = getPostMethod("auratest:test_TokenValidation", false);
+        HttpPost post = getPostMethod("aura:component", false);
         HttpResponse httpResponse = perform(post);
         int statusCode = getStatusCode(httpResponse);
         String response = getResponseBody(httpResponse);
@@ -112,7 +112,7 @@ public class AuraServletCacheInvalidationHttpTest extends AuraHttpTestCase {
 
         Map<String, String> params = new HashMap<>();
         params.put("message", jsonMessage);
-        params.put("aura.token", getCsrfToken());
+        params.put("aura.token", configAdapter.getCSRFToken());
 
         String serContext;
         contextService.startContext(Mode.PROD, Format.JSON, Authentication.AUTHENTICATED,

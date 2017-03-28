@@ -15,26 +15,27 @@
  */
 package org.auraframework.impl.root.parser.handler;
 
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Lists;
+import java.util.List;
+import java.util.Set;
+
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
 
 import org.auraframework.adapter.ConfigAdapter;
 import org.auraframework.adapter.DefinitionParserAdapter;
 import org.auraframework.builder.RootDefinitionBuilder;
 import org.auraframework.def.DefDescriptor;
+import org.auraframework.def.DocumentationDef;
 import org.auraframework.def.IncludeDefRef;
 import org.auraframework.def.LibraryDef;
 import org.auraframework.impl.root.library.LibraryDefImpl;
 import org.auraframework.service.DefinitionService;
-import org.auraframework.system.Source;
+import org.auraframework.system.TextSource;
 import org.auraframework.throwable.quickfix.QuickFixException;
 import org.auraframework.util.AuraTextUtil;
 
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-
-import java.util.List;
-import java.util.Set;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
 
 public class LibraryDefHandler extends RootTagHandler<LibraryDef> {
 
@@ -48,10 +49,11 @@ public class LibraryDefHandler extends RootTagHandler<LibraryDef> {
         super();
     }
 
-    public LibraryDefHandler(DefDescriptor<LibraryDef> libraryDefDescriptor, Source<?> source, XMLStreamReader xmlReader,
+    public LibraryDefHandler(DefDescriptor<LibraryDef> libraryDefDescriptor, TextSource<?> source, XMLStreamReader xmlReader,
                              boolean isInInternalNamespace, DefinitionService definitionService,
                              ConfigAdapter configAdapter, DefinitionParserAdapter definitionParserAdapter) {
         super(libraryDefDescriptor, source, xmlReader, isInInternalNamespace, definitionService, configAdapter, definitionParserAdapter);
+        builder.setDescriptor(libraryDefDescriptor);
     }
 
     @Override
@@ -61,19 +63,22 @@ public class LibraryDefHandler extends RootTagHandler<LibraryDef> {
     }
 
     @Override
-    protected LibraryDefImpl createDefinition() throws QuickFixException {
-        builder.setDescriptor(getDefDescriptor());
-        builder.setLocation(startLocation);
+    protected void finishDefinition() throws QuickFixException {
+        builder.setDocumentationDef(getBundledDef(DocumentationDef.class, DefDescriptor.MARKUP_PREFIX));
         builder.setOwnHash(source.getHash());
+        builder.setLocation(startLocation);
         builder.setIncludes(includes);
-        return builder.build();
     }
 
     @Override
     protected void handleChildTag() throws XMLStreamException, QuickFixException {
         String tag = getTagName();
         if (IncludeDefRefHandler.TAG.equals(tag)) {
-            this.includes.add(new IncludeDefRefHandler(this, xmlReader, source, definitionService).getElement());
+            try {
+                this.includes.add(new IncludeDefRefHandler(this, xmlReader, source, definitionService).getElement());
+            } catch (QuickFixException qfe) {
+                builder.setParseError(qfe);
+            }
         } else {
             error("Found unexpected tag %s", tag);
         }
@@ -99,7 +104,7 @@ public class LibraryDefHandler extends RootTagHandler<LibraryDef> {
     }
 
     @Override
-    protected RootDefinitionBuilder<LibraryDef> getBuilder() {
+    public RootDefinitionBuilder<LibraryDef> getBuilder() {
         return builder;
     }
 

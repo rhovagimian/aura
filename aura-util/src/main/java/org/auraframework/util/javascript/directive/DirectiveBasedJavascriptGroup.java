@@ -94,7 +94,6 @@ public class DirectiveBasedJavascriptGroup extends CommonJavascriptGroupImpl {
     
     // Caching for resources
     private static final String LIB_CACHE_TEMP_DIR = IOUtil.newTempDir("auracache");
-    
 
     // name for threads that compress and write the output
     public static final String THREAD_NAME = "jsgen.";
@@ -204,30 +203,36 @@ public class DirectiveBasedJavascriptGroup extends CommonJavascriptGroupImpl {
                 }
             }
 
-			private void appendExternalLibraries(Writer writer) throws IOException {
-				ResourceLoader rl = getResourceLoader();
-					writer.write("\n Aura.externalLibraries = function() {\n");
-					try {
-						appendResourceToWriter(writer, "momentWithLocales", rl.getResource("aura/resources/momentWithLocales/momentWithLocales.min.js"));
-						appendResourceToWriter(writer, "DOMPurify", rl.getResource("aura/resources/domPurify/DOMPurify.min.js"));
-						appendResourceToWriter(writer, "walltime-js", rl.getResource("aura/resources/walltime-js/walltime.min.js"));
-					} catch (Exception e) {}
+            private void appendExternalLibraries(Writer writer) throws IOException {
+                ResourceLoader rl = getResourceLoader();
+                String minified = "";
+                if (mode.allowedInProduction()) {
+                    minified = ".min";
+                }
+                writer.write("\n Aura.externalLibraries = function() {\n");
+                try {
+                    appendResourceToWriter(writer, "moment", rl.getResource("aura/resources/moment/moment" + minified + ".js"));
+                    // 1999 is selected since it's when SFDC starts
+                    appendResourceToWriter(writer, "moment-timezone-with-data-1999-2020", rl.getResource("aura/resources/moment-timezone/moment-timezone-with-data-1999-2020" + minified + ".js"));
+                    appendResourceToWriter(writer, "DOMPurify", rl.getResource("aura/resources/domPurify/DOMPurify" + minified + ".js"));
+                } catch (Exception ignored) {
+                }
 
-					writer.write("\n};");
-			}
-			
-			private void appendResourceToWriter(Writer writer, String name, URL url ) throws IOException {
-				writer.write("// "+ name +"\n");
-				writer.write(Resources.toString(url, Charsets.UTF_8));
-				writer.write("\n");
-			}
+                writer.write("\n};");
+            }
 
-			private ResourceLoader getResourceLoader() throws IOException {
-				if (resourceLoader == null) {
-					resourceLoader = new ResourceLoader(LIB_CACHE_TEMP_DIR, true);
-				}
-				return resourceLoader;
-			}
+            private void appendResourceToWriter(Writer writer, String name, URL url) throws IOException {
+                writer.write("// " + name + "\n");
+                writer.write(Resources.toString(url, Charsets.UTF_8));
+                writer.write("\n");
+            }
+
+            private ResourceLoader getResourceLoader() throws IOException {
+                if (resourceLoader == null) {
+                    resourceLoader = new ResourceLoader(LIB_CACHE_TEMP_DIR, true);
+                }
+                return resourceLoader;
+            }
         }, threadName);
         t.start();
     }

@@ -71,12 +71,7 @@ public interface SourceLoader {
     Set<DefDescriptor<?>> find(@Nonnull DescriptorFilter dm);
 
     /**
-     * find a set of descriptors based on primary interface in a namespace.
-     *
-     * @param primaryInterface the class that describes the descriptors we want.
-     * @param prefix the required prefix.
-     * @param namespace the namespace to search.
+     * Reset the internals of the source loader (for filesystem changed for example).
      */
-    <T extends Definition> Set<DefDescriptor<T>> find(@Nonnull Class<T> primaryInterface,
-            @Nonnull String prefix, @Nonnull String namespace);
+    void reset();
 }

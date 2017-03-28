@@ -71,9 +71,9 @@ var IndexedDBAdapter = function IndexedDBAdapter(config) {
 
     // objectStore name is the descriptor of current app or cmp
     var context = $A.getContext();
-    var appname = (context && (context.app || context.cmp));
-    appname = appname || window.location.pathname;
-    this.tableName = appname || "store";
+    var tableName = config["partitionName"] || (context && (context.app || context.cmp));
+    tableName = tableName || window.location.pathname;
+    this.tableName = tableName || "store";
 
     this.sweepingSuspended = false;
 
@@ -93,6 +93,8 @@ IndexedDBAdapter.LOG_LEVEL = {
 /** Max time for initialize to complete */
 IndexedDBAdapter.INITIALIZE_TIMEOUT = 30 * 1000;
 
+/** Threshold of time elapsed getting items from object store before a metric is logged */
+IndexedDBAdapter.OBJECTSTORE__TRANSACTION_THRESHOLD = 500;
 
 /**
  * Returns the name of the adapter.
@@ -126,9 +128,10 @@ IndexedDBAdapter.prototype.initialize = function() {
  * Initializes the adapter by setting up the DB and ObjectStore.
  * @param {Number=} version Optional version value for IndexedDB.open(). Set
  *  to a new value if schema needs to change (eg new table, new index).
+ * @param {Object} [transactionTimer] timer measuring open / initialization of db.
  * @private
  */
-IndexedDBAdapter.prototype.initializeInternal = function(version) {
+IndexedDBAdapter.prototype.initializeInternal = function(version, transactionTimer) {
     var dbRequest;
     var that = this;
 
@@ -144,6 +147,10 @@ IndexedDBAdapter.prototype.initializeInternal = function(version) {
         }, IndexedDBAdapter.INITIALIZE_TIMEOUT);
     }
 
+    if (!transactionTimer) {
+        transactionTimer = this.thresholdMetricTimer("performance:storage-indexeddb-open-transaction");
+        transactionTimer.info = {"wasBlocked":false, "wasUpgraded":false};
+    }
     if (version) {
         // version is dynamic because it needs to be incremented when we need to create an objectStore
         // for the current app or cmp. IndexedDB only allows modifications to db or objectStore during
@@ -158,9 +165,10 @@ IndexedDBAdapter.prototype.initializeInternal = function(version) {
         // this is fired if there's a version mismatch. if createTable() doesn't throw
         // then onsuccess() is fired, else onerror() is fired.
         that.createTables(e);
+        transactionTimer.info["wasUpgraded"] = true;
     };
     dbRequest.onsuccess = function(e) {
-        that.setupDB(e);
+        that.setupDB(e, transactionTimer);
     };
     dbRequest.onerror = function(e) {
         // this means we have no storage.
@@ -174,6 +182,7 @@ IndexedDBAdapter.prototype.initializeInternal = function(version) {
     };
     dbRequest.onblocked = function(/*error*/) {
         that.log(IndexedDBAdapter.LOG_LEVEL.INFO, "initializeInternal(): blocked from opening DB, most likely by another open browser tab");
+        transactionTimer.info["wasBlocked"] = true;
     };
 };
 
@@ -258,9 +267,10 @@ IndexedDBAdapter.prototype.sweep = function() {
 /**
  * Initializes the structure with a new DB.
  * @param {Event} event IndexedDB event.
+ * @param {Object} transactionTimer measuring time taken to open/initialize db.
  * @private
  */
-IndexedDBAdapter.prototype.setupDB = function(event) {
+IndexedDBAdapter.prototype.setupDB = function(event, transactionTimer) {
     var db = event.target.result;
     var that = this;
     this.db = db;
@@ -279,9 +289,10 @@ IndexedDBAdapter.prototype.setupDB = function(event) {
         // objectStore does not exist so increment version so we can create it
         var currentVersion = db["version"];
         db.close();
-        this.initializeInternal(currentVersion + 1);
+        this.initializeInternal(currentVersion + 1, transactionTimer);
     } else {
         this.initializeComplete(true);
+        transactionTimer.end(transactionTimer.info);
     }
 };
 
@@ -344,12 +355,14 @@ IndexedDBAdapter.prototype.initializeComplete = function(ready, error) {
  * @private
  */
 IndexedDBAdapter.prototype.getItemsInternal = function(keys, resolve, reject) {
+    var transactionTimer = this.thresholdMetricTimer("performance:storage-indexeddb-getItems-read-transaction");
     var transaction = this.db.transaction([this.tableName], "readonly");
     var objectStore = transaction.objectStore(this.tableName);
     var that = this;
 
     var results = {};
     var collected = 0;
+
     function collector(event) {
         var stored = event.target.result || {};
         var key = stored["key"];
@@ -360,22 +373,26 @@ IndexedDBAdapter.prototype.getItemsInternal = function(keys, resolve, reject) {
         }
         collected++;
         if (collected === keys.length) {
+            transactionTimer.end({
+                "name"      : key,
+                "keys"      : keys,
+                "collected" : collected
+            });
             resolve(results);
             return;
         }
     }
 
-    transaction.onabort = function(event) {
-        var message = "getItemsInternal(): transaction aborted for keys "+keys.toString()+": "+event.error;
+    transaction.onabort = function() {
+        var message = "getItemsInternal(): transaction aborted for keys [" + keys + "]: " + transaction.error;
         that.log(IndexedDBAdapter.LOG_LEVEL.WARNING, message);
-        reject(new Error("IndexedDBAdapter."+message));
+        reject(new Error("IndexedDBAdapter." + message));
     };
-    transaction.onerror = function(event) {
-        var message = "getItemsInternal(): transaction error for keys "+keys.toString()+": "+event.error;
+    transaction.onerror = function() {
+        var message = "getItemsInternal(): transaction error for keys [" + keys + "]: " + transaction.error;
         that.log(IndexedDBAdapter.LOG_LEVEL.WARNING, message);
-        reject(new Error("IndexedDBAdapter."+message));
+        reject(new Error("IndexedDBAdapter." + message));
     };
-
 
     var objectStoreRequest;
     for (var i = 0; i < keys.length; i++) {
@@ -394,6 +411,7 @@ IndexedDBAdapter.prototype.getItemsInternal = function(keys, resolve, reject) {
  * @private
  */
 IndexedDBAdapter.prototype.walkInternal = function(resolve, reject, sendResult) {
+    var transactionTimer = this.thresholdMetricTimer("performance:storage-indexeddb-walkInternal-read-transaction");
     var transaction = this.db.transaction([this.tableName], "readonly");
     var objectStore = transaction.objectStore(this.tableName);
     var cursor = objectStore.openCursor();
@@ -415,6 +433,7 @@ IndexedDBAdapter.prototype.walkInternal = function(resolve, reject, sendResult) 
             }
             icursor["continue"]();
         } else {
+            transactionTimer.end({'count':count, 'size':size});
             that.refreshSize(size, count);
 
             // async sweep
@@ -461,6 +480,7 @@ IndexedDBAdapter.prototype.setItems = function(tuples) {
         if (sizes + that.sizeGuess + that.sizeErrorBar > that.limitSweepHigh || that.sizeErrorBar > that.limitError) {
             that.expireCache(sizes);
         }
+        var transactionTimer = that.thresholdMetricTimer("performance:storage-indexeddb-setItems-write-transaction");
         var transaction = that.db.transaction([that.tableName], "readwrite");
         var objectStore = transaction.objectStore(that.tableName);
 
@@ -468,6 +488,7 @@ IndexedDBAdapter.prototype.setItems = function(tuples) {
         function collector() {
             collected++;
             if (collected === tuples.length) {
+                transactionTimer.end({'collected':collected, 'storables': storables.length, 'first_key': tuples[0][0]});
                 // transaction is done so update size then resolve.
                 that.updateSize(sizes/2, sizes/2);
                 resolve();
@@ -475,17 +496,17 @@ IndexedDBAdapter.prototype.setItems = function(tuples) {
             }
         }
 
-        transaction.onabort = function(event) {
+        transaction.onabort = function() {
             var keys = tuples.map(function(tuple) { return tuple[0]; });
-            var message = "setItemsInternal(): transaction aborted for keys "+keys.toString()+": "+event.error;
+            var message = "setItemsInternal(): transaction aborted for keys [" + keys + "]: " + transaction.error;
             that.log(IndexedDBAdapter.LOG_LEVEL.WARNING, message);
-            reject(new Error("IndexedDBAdapter."+message));
+            reject(new Error("IndexedDBAdapter." + message));
         };
-        transaction.onerror = function(event) {
+        transaction.onerror = function() {
             var keys = tuples.map(function(tuple) { return tuple[0]; });
-            var message = "setItemsInternal(): transaction error for keys "+keys.toString()+": "+event.error;
+            var message = "setItemsInternal(): transaction error for keys [" + keys + "]: " + transaction.error;
             that.log(IndexedDBAdapter.LOG_LEVEL.WARNING, message);
-            reject(new Error("IndexedDBAdapter."+message));
+            reject(new Error("IndexedDBAdapter." + message));
         };
 
         var objectStoreRequest;
@@ -506,6 +527,7 @@ IndexedDBAdapter.prototype.removeItems = function(keys) {
     $A.assert(this.ready, "IndexedDBAdapter.removeItems() called with this.ready=" + this.ready);
     var that = this;
     return new Promise(function(resolve, reject) {
+        var transactionTimer = that.thresholdMetricTimer("performance:storage-indexeddb-removeItems-write-transaction");
         var transaction = that.db.transaction([that.tableName], "readwrite");
         var objectStore = transaction.objectStore(that.tableName);
 
@@ -515,6 +537,7 @@ IndexedDBAdapter.prototype.removeItems = function(keys) {
         function collector() {
             collected++;
             if (collected === keys.length) {
+                transactionTimer.end({'collected':collected, 'keys': keys});
                 // transaction is done so update size then resolve
                 that.updateSize(-sizeAvg, sizeAvg);
                 resolve();
@@ -522,13 +545,13 @@ IndexedDBAdapter.prototype.removeItems = function(keys) {
             }
         }
 
-        transaction.onabort = function(event) {
-            var message = "removeItemsInternal(): transaction aborted for keys "+keys.toString()+": "+event.error;
+        transaction.onabort = function() {
+            var message = "removeItemsInternal(): transaction aborted for keys [" + keys + "]: " + transaction.error;
             that.log(IndexedDBAdapter.LOG_LEVEL.WARNING, message);
             reject(new Error("IndexedDBAdapter."+message));
         };
-        transaction.onerror = function(event) {
-            var message = "removeItemsInternal(): transaction error for keys "+keys.toString()+": "+event.error;
+        transaction.onerror = function() {
+            var message = "removeItemsInternal(): transaction error for keys [" + keys + "]: " + transaction.error;
             that.log(IndexedDBAdapter.LOG_LEVEL.WARNING, message);
             reject(new Error("IndexedDBAdapter."+message));
         };
@@ -550,20 +573,22 @@ IndexedDBAdapter.prototype.clear = function() {
     $A.assert(this.ready, "IndexedDBAdapter.clear() called with this.ready=" + this.ready);
     var that = this;
     return new Promise(function(resolve, reject) {
+        var transactionTimer = that.thresholdMetricTimer("performance:storage-indexeddb-clear-write-transaction");
         var transaction = that.db.transaction([that.tableName], "readwrite");
         var objectStore = transaction.objectStore(that.tableName);
 
         objectStore.clear();
         that.setSize(0, 0);
 
-        transaction.onabort = function(event) {
-            reject(new Error("IndexedDBAdapter.clear(): Transaction aborted: "+event.error));
+        transaction.onabort = function() {
+            reject(new Error("IndexedDBAdapter.clear(): Transaction aborted: " + transaction.error));
         };
         transaction.oncomplete = function() {
+            transactionTimer.end({});
             resolve();
         };
-        transaction.onerror = function(event) {
-            reject(new Error("IndexedDBAdapter.clearI(): Transaction failed: "+event.error));
+        transaction.onerror = function() {
+            reject(new Error("IndexedDBAdapter.clear(): Transaction failed: " + transaction.error));
         };
     });
 };
@@ -601,7 +626,8 @@ IndexedDBAdapter.prototype.expireCache = function(requestedSize, resolve, reject
 
     this.lastSweep = now;
     try {
-        var transaction = this.db.transaction([this.tableName], "readwrite");
+        var transactionTimer = this.thresholdMetricTimer("performance:storage-indexeddb-expireCache-read-transaction");
+        var transaction = this.db.transaction([this.tableName], "readonly");
         var objectStore = transaction.objectStore(this.tableName);
         var index = objectStore.index("expires");
         var cursor = index.openCursor();
@@ -611,6 +637,7 @@ IndexedDBAdapter.prototype.expireCache = function(requestedSize, resolve, reject
         var expireDate = now + this.expiresFudge;
         var that = this;
         var removeSize = requestedSize || 0;
+        var keysToDelete = [];
 
         // if we are above the low water mark, sweep down to it.
         if (this.sizeGuess > this.limitSweepLow) {
@@ -641,7 +668,7 @@ IndexedDBAdapter.prototype.expireCache = function(requestedSize, resolve, reject
 
                     if (shouldEvict) {
                         that.log(IndexedDBAdapter.LOG_LEVEL.INFO, "expireCache(): sweep removing "+icursor.primaryKey);
-                        icursor["delete"]();
+                        keysToDelete.push(icursor.primaryKey);
                         expiredSize += stored["size"];
                     } else {
                         size += stored["size"];
@@ -650,8 +677,12 @@ IndexedDBAdapter.prototype.expireCache = function(requestedSize, resolve, reject
                 }
                 icursor["continue"]();
             } else {
+                transactionTimer.end({'size':size, 'count':count});
                 that.refreshSize(size, count);
 
+                if (keysToDelete.length > 0) {
+                    that.removeItems(keysToDelete);
+                }
                 if (resolve) {
                     // intentionally don't return: the sweep is done so resolve the promise
                     // but then check if we need to do an async sweep due to size
@@ -778,6 +809,30 @@ IndexedDBAdapter.prototype.log = function (level, msg, obj) {
     if (this.debugLogging || level.id >= IndexedDBAdapter.LOG_LEVEL.WARNING.id) {
         $A[level.fn]("IndexedDBAdapter['"+this.instanceName+"'] "+msg, obj);
     }
+};
+
+/**
+ * Returns a timer object to emit a metric.
+ * @param name of the metricsService transaction.
+ * @return object with 'end' function to be called with an object, any keys/values will be logged in the metricsService transaction.
+ * @private
+ */
+IndexedDBAdapter.prototype.thresholdMetricTimer = function(name) {
+    var startTime = (new Date()).getTime();
+    var startVisibility = document.visibilityState === "visible";
+    return {
+      end: function(info) {
+          var elapsed = (new Date()).getTime() - startTime;
+          if (elapsed > IndexedDBAdapter.OBJECTSTORE__TRANSACTION_THRESHOLD) {
+              info['elapsed'] = elapsed;
+              info['visibilityStateStart'] = startVisibility;
+              info['visibilityStateEnd'] = document.visibilityState === "visible";
+              $A.metricsService.transaction("aura", name, { "context": {
+                  "attributes" : info
+              }});
+          }
+      }
+    };
 };
 
 

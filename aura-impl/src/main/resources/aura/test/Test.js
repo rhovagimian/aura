@@ -47,7 +47,7 @@ function TestInstance() {
     this.installOverride();
     this.name = undefined;
     
-    //borrow Aura.time if it's there, if not, pollyfill 
+    //borrow Aura.time if it's there, if not, polyfill 
     this.time = 
     	(window['Aura'] && Aura.time && Aura.time instanceof Function)?
     	Aura.time:(
@@ -952,7 +952,7 @@ TestInstance.prototype.assertAuraType = function(type, condition, assertMessage)
         case "Event": return condition instanceof Event;
         case "EventDef": return condition instanceof EventDef;
 
-        case "Component": return condition instanceof Component;
+        case "Component": return $A.util.isComponent(condition);
         case "ComponentDef": return condition instanceof ComponentDef;
 
         case "ControllerDef": return condition instanceof ControllerDef;
@@ -1610,12 +1610,7 @@ TestInstance.prototype.getElementAttributeValue = function(element, attributeNam
 TestInstance.prototype.addEventHandler = function(eventName, handler, component, insert) {
     if ($A.util.isUndefinedOrNull(component)) {
         // application event handler
-        $A.eventService.addHandler({
-            'event' : eventName,
-            'globalId' : 'TESTHANDLER' + eventName,
-            'handler' : handler
-        });
-
+        $A.addEventHandler(eventName,handler);
     } else {
         // component event handler
         // mock a ValueProvider that returns a synthetic action
@@ -1649,6 +1644,32 @@ TestInstance.prototype.dummyFunction = function() {
  */
 TestInstance.prototype.getAuraErrorMessage = function() {
     return this.getText($A.util.getElement("auraErrorMessage"));
+};
+
+/**
+ * Assert that the Access check failure message is as expected
+ * 
+ * @param {String}
+ *      errorMessage An Aura Error Message
+ * @param {String}
+ *      delimiter split input error message
+ * @param {String}
+ *      targetCmp A string containing component being accessed
+ * @param {String}
+ *      accessingCmp A string containing accessing component details
+ * 
+ * @export
+ * @function Test#getPopOverErrorMessage
+ */
+TestInstance.prototype.getPopOverErrorMessage = function(errorMessage, delimiter, targetCmp, accessingCmp) {
+    if (this.contains(errorMessage,delimiter)) {
+        var errorMsgACF = errorMessage.split(delimiter);
+        if (!(this.contains(errorMsgACF[0],targetCmp) && this.contains(errorMsgACF[1],accessingCmp))) {
+            this.fail("Access check error message verification failed. Did not receive expected error");
+        }
+    } else {
+        throw new Error("TestInstance:getPopOverErrorMessage  Did not receive expected error");
+    }
 };
 
 /**
@@ -1800,13 +1821,13 @@ TestInstance.prototype.addPrePostSendCallback = function (action, preSendCallbac
         throw new Error("TestInstance.addPrePostSendCallback: one of the callback must be not-null");
     }
     if (preSendCallback !== null && preSendCallback !== undefined) {
-        if (!(preSendCallback instanceof Function)) {
+        if (!($A.util.isFunction(preSendCallback))) {
             throw new Error("TestInstance.addPrePostSendCallback: preSendCallback must be a function"
                 +preSendCallback);
         }
     }
     if (postSendCallback !== null && postSendCallback !== undefined) {
-        if (!(postSendCallback instanceof Function)) {
+        if (!($A.util.isFunction(postSendCallback))) {
             throw new Error("TestInstance.addPrePostSendCallback: preSendCallback must be a function"
                 +postSendCallback);
         }
@@ -2367,14 +2388,3 @@ window.onerror = (function() {
         return newHandler.apply(this, arguments);
     };
 })();
-
-/**
- * Should try to remove this hack
- *
- * @ignore
- */
-(function(originalDestroy) {
-    Component.prototype.destroy = function() {
-        return originalDestroy.call(this, false);
-    };
-})(Component.prototype.destroy);

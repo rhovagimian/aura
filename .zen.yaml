@@ -3,6 +3,9 @@
 # "mvn clean install" in a drone-managed container.
 pipeline_type: maven_docker
 
+# for Zen workflow V2
+version: 2.0
+
 # These maven profiles, if present in your POM, will be explicitly
 # activated by Zen.
 # zen-jacoco is not marked active in your POM, so will not be used
@@ -17,15 +20,31 @@ minimum_code_coverage_percentage: 0
 
 # Content between here and the end of the file, while it must be valid YAML,
 # is currently read textually by Zen. The order of the sections cannot change.
+itest:
+  codeline: main
+  modules:
+    aura:
+      optional_history_file: null
+      properties_name: org.auraframework
+  ftest_labels: [~ignore,aura.sanity,aura.precheckin,one.precheckin,precheckin,precheckin.phantomjs]
+  ab_enabled: true
 
 script:
+  localedef -v -c -i en_US -f UTF-8 en_US.UTF-8
   rm -r {node,node_modules} || true
   wget --quiet --recursive --no-parent --reject "index.html*" --level=99 http://localhost/node_modules/ || true
   wget --quiet --recursive --no-parent --reject "index.html*" --level=99 http://localhost/node/ || true
   chmod -R 0755 localhost
+  sudo unmount /dev/shm
+  sudo mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=512M,tmpfs /dev/shm
   mv localhost/* .
+  mkdir -p /home/mvn-user/.m2
+  sed -i 's/1024x768x24/960x640x16/g' /home/mvn-user/.profile
+  cp settings.xml /home/mvn-user/.m2/settings.xml
+  chown -R mvn-user /home/mvn-user/.m2
   chown -R mvn-user $(pwd)
-  sudo -iu mvn-user bash -c "cd $(pwd);mvn clean deploy -DskipJsDoc $MAVEN_ARGS -DaltDeploymentRepository=zen::default::file://$(pwd)/$LOCAL_DEPLOY_DIR -Dnode.download.root.url=http://localhost/node/ -Dchromedriver.download.root.url=http://localhost/chromedriver -Dnpm.download.root.url=http://localhost/npm/" || export status=$? || true
+  sudo -iu mvn-user bash -c "cd $(pwd);mvn clean deploy $MAVEN_ARGS -Dmaven.repo.local=$(pwd)/.m2/repository -DaltDeploymentRepository=zen::default::file://$(pwd)/$LOCAL_DEPLOY_DIR -Dnode.download.root.url=http://localhost/node/ -Dchromedriver.download.root.url=http://localhost/chromedriver -Dnpm.download.root.url=http://localhost/npm/" || export status=$? || true
+  sudo -iu mvn-user bash -c "cd $(pwd);set -x;export LANG=\"en_US.UTF-8\";mvn post-integration-test $MAVEN_ARGS -Dmaven.repo.local=$(pwd)/.m2/repository -DaltDeploymentRepository=zen::default::file://$(pwd)/$LOCAL_DEPLOY_DIR -Dnode.download.root.url=http://localhost/node/ -Dchromedriver.download.root.url=http://localhost/chromedriver -Dnpm.download.root.url=http://localhost/npm/ -Pdesktop -DskipJsDoc -DskipComponentCompile -DskipUnitTests -DrunIntTests -Dwebdriver.browser.type=GOOGLECHROME -Dwebdriver.chrome.nosandbox=true -Dwebdriver.reusebrowser=true -Dwebdriver.timeout=90 -Dwebdriver.timeout.getdriver=30 -DtestThreadCount=3" || export status=$? || true
   chown -R $ORIG_UID:$ORIG_UID $(pwd)
   exit ${status:-0}
 # It is currently required that there be an empty line following the script: section
@@ -34,7 +53,7 @@ script:
 # container, the commands in the script: section will be executed. No Zen-specific content
 # can be added.
 build:
-  image: registry.dci.sfdc.net/dci/centos-aura-tools
+  image: ops0-artifactrepo1-0-prd.data.sfdc.net/dci/centos-aura-tools@sha256:a93bef87b76ccd5adae296acd22ee7b7b70f49d4540e41e83ac477f39c7ac979
   pull: true
   auth_config:
     username: $$DOCKER_USERNAME
@@ -49,7 +68,7 @@ build:
     - ./.zenbuild.sh
 compose:
   external-tools:
-    image: registry.dci.sfdc.net/dci/alpine-aura-tools-external
+    image: ops0-artifactrepo1-0-prd.data.sfdc.net/dci/alpine-aura-tools-external@sha256:8b4febf1eff36ef5fca0d17b6561ef9305c86a6bd194e1372152c9bc2ffc1a05
     pull: true
     auth_config:
       username: $$DOCKER_USERNAME

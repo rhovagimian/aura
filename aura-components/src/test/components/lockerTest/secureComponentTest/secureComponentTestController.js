@@ -163,7 +163,19 @@
         testUtils.assertNull(cmp.getEvent('v.unknownEvent'), "Expected null when executing SecureComponent.getEvent('c.unknownEvent')");
     },
 
+    testGetName: function(cmp) {
+        var testUtils = cmp.get("v.testUtils");
+        var expected = "lockerTestSecureComponentTest";
+        testUtils.assertEquals(expected, cmp.getName(), "Unexpected return from Component.js#getName");
+    },
+
+    testGetType: function(cmp) {
+        var testUtils = cmp.get("v.testUtils");
+        var expected = "lockerTest:secureComponentTest";
+        testUtils.assertEquals(expected, cmp.getType(), "Unexpected return from Component.js#getType");
+    },
+
     sayHello: function(cmp) {
-		cmp.find("message").textContent = "Hello from sayHello()";
-	}
+        cmp.find("message").textContent = "Hello from sayHello()";
+    }
 })

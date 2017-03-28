@@ -25,6 +25,7 @@ function SecureComponent(component, key) {
     // special methods that require some extra work
     o = Object.create(null, {
         "get": {
+            writable: true,
             enumerable: true,
             value: function(name) {
                 var path = name.split('.');
@@ -32,10 +33,12 @@ function SecureComponent(component, key) {
                 if (typeof path[1] !== "string" || path[1] === "") {
                     throw new SyntaxError('Invalid key '+ name);
                 }
+
                 var value = component["get"](name);
                 if (!value) {
-                  return value;
+                    return value;
                 }
+
                 if (path[0] === 'c') {
                     return SecureAction(value, key);
                 } else {
@@ -44,6 +47,7 @@ function SecureComponent(component, key) {
             }
         },
         "getEvent": {
+            writable: true,
             enumerable: true,
             value: function(name) {
                 var event = component["getEvent"](name);
@@ -60,10 +64,6 @@ function SecureComponent(component, key) {
         }
     });
 
-    var filterOpaque = {
-    	filterOpaque : true
-	};
-
     Object.defineProperties(o, {
         // these four super* methods are exposed as a temporary solution until we figure how to re-arrange the render flow
         "superRender": SecureObject.createFilteredMethod(o, component, "superRender"),
@@ -74,6 +74,7 @@ function SecureComponent(component, key) {
         // component @platform methods
         "isValid": SecureObject.createFilteredMethod(o, component, "isValid"),
         "isInstanceOf": SecureObject.createFilteredMethod(o, component, "isInstanceOf"),
+        "addEventHandler": SecureObject.createFilteredMethod(o, component, "addEventHandler"),
         "addHandler": SecureObject.createFilteredMethod(o, component, "addHandler"),
         "addValueHandler": SecureObject.createFilteredMethod(o, component, "addValueHandler"),
         "addValueProvider": SecureObject.createFilteredMethod(o, component, "addValueProvider"),
@@ -81,30 +82,34 @@ function SecureComponent(component, key) {
         "isRendered": SecureObject.createFilteredMethod(o, component, "isRendered"),
         "getGlobalId": SecureObject.createFilteredMethod(o, component, "getGlobalId"),
         "getLocalId": SecureObject.createFilteredMethod(o, component, "getLocalId"),
-        "getSuper": SecureObject.createFilteredMethod(o, component, "getSuper", filterOpaque),
-        "getReference": SecureObject.createFilteredMethod(o, component, "getReference", filterOpaque),
+        "getSuper": SecureObject.createFilteredMethod(o, component, "getSuper"),
+        "getReference": SecureObject.createFilteredMethod(o, component, "getReference"),
         "getVersion": SecureObject.createFilteredMethod(o, component, "getVersion"),
         "clearReference": SecureObject.createFilteredMethod(o, component, "clearReference"),
         "autoDestroy": SecureObject.createFilteredMethod(o, component, "autoDestroy"),
         "isConcrete": SecureObject.createFilteredMethod(o, component, "isConcrete"),
-        "getConcreteComponent": SecureObject.createFilteredMethod(o, component, "getConcreteComponent", filterOpaque),
-        "find": SecureObject.createFilteredMethod(o, component, "find", filterOpaque),
-        "set": SecureObject.createFilteredMethod(o, component, "set"),
-        "getElement": SecureObject.createFilteredMethod(o, component, "getElement", filterOpaque),
-        "getElements": SecureObject.createFilteredMethod(o, component, "getElements", filterOpaque)
+        "getConcreteComponent": SecureObject.createFilteredMethod(o, component, "getConcreteComponent"),
+        "find": SecureObject.createFilteredMethod(o, component, "find"),
+        "set": SecureObject.createFilteredMethod(o, component, "set", { defaultKey: key, rawArguments: true }),
+        "getElement": SecureObject.createFilteredMethod(o, component, "getElement"),
+        "getElements": SecureObject.createFilteredMethod(o, component, "getElements"),
+        "getName": SecureObject.createFilteredMethod(o, component, "getName"),
+        "getType": SecureObject.createFilteredMethod(o, component, "getType"),
+        "removeEventHandler": SecureObject.createFilteredMethod(o, component, "removeEventHandler")
     });
 
     // The shape of the component depends on the methods exposed in the definitions:
     var defs = component.getDef().methodDefs;
     if (defs) {
         defs.forEach(function(method) {
-        	var descriptor = new DefDescriptor(method.name);
-    		SecureObject.addMethodIfSupported(o, component, descriptor.getName());
+            var descriptor = new DefDescriptor(method.name);
+            SecureObject.addMethodIfSupported(o, component, descriptor.getName(), { defaultKey: key });
         }, o);
     }
 
     ls_setRef(o, component, key);
     ls_addToCache(component, o, key); // backpointer
+    ls_registerProxy(o);
 
     return o;
 }

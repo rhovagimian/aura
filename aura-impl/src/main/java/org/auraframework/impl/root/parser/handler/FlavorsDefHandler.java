@@ -25,7 +25,7 @@ import org.auraframework.def.FlavorsDef;
 import org.auraframework.expression.PropertyReference;
 import org.auraframework.impl.css.flavor.FlavorsDefImpl;
 import org.auraframework.service.DefinitionService;
-import org.auraframework.system.Source;
+import org.auraframework.system.TextSource;
 import org.auraframework.throwable.quickfix.DefinitionNotFoundException;
 import org.auraframework.throwable.quickfix.QuickFixException;
 import org.auraframework.util.AuraTextUtil;
@@ -43,7 +43,7 @@ public class FlavorsDefHandler extends RootTagHandler<FlavorsDef> {
         super();
     }
 
-    public FlavorsDefHandler(DefDescriptor<FlavorsDef> defDescriptor, Source<FlavorsDef> source,
+    public FlavorsDefHandler(DefDescriptor<FlavorsDef> defDescriptor, TextSource<FlavorsDef> source,
                              XMLStreamReader xmlReader, boolean isInInternalNamespace,
                              DefinitionService definitionService,
                              ConfigAdapter configAdapter, DefinitionParserAdapter definitionParserAdapter) throws QuickFixException {
@@ -68,7 +68,7 @@ public class FlavorsDefHandler extends RootTagHandler<FlavorsDef> {
     }
 
     @Override
-    protected RootDefinitionBuilder<FlavorsDef> getBuilder() {
+    public RootDefinitionBuilder<FlavorsDef> getBuilder() {
         return builder;
     }
 
@@ -100,6 +100,10 @@ public class FlavorsDefHandler extends RootTagHandler<FlavorsDef> {
         if (!AuraTextUtil.isNullEmptyOrWhitespace(xmlReader.getText())) {
             error("No literal text allowed in %s tag", TAG);
         }
+    }
+
+    @Override
+    protected void finishDefinition() throws QuickFixException {
     }
 
     @Override

@@ -18,11 +18,11 @@ package org.auraframework.impl.root.parser.handler;
 import org.auraframework.adapter.ConfigAdapter;
 import org.auraframework.adapter.DefinitionParserAdapter;
 import org.auraframework.def.ComponentDef;
-import org.auraframework.def.ComponentDefRef.Load;
+import org.auraframework.def.DefinitionReference.Load;
 import org.auraframework.def.RootDefinition;
 import org.auraframework.impl.root.component.LazyComponentDefRef;
 import org.auraframework.service.DefinitionService;
-import org.auraframework.system.Source;
+import org.auraframework.system.TextSource;
 
 import javax.xml.stream.XMLStreamReader;
 
@@ -37,7 +37,7 @@ public class LazyComponentDefRefHandler<P extends RootDefinition> extends Compon
     protected LazyComponentDefRef.Builder lazyBuilder = new LazyComponentDefRef.Builder();
 
     protected LazyComponentDefRefHandler(RootTagHandler<P> parentHandler, String tag, XMLStreamReader xmlReader,
-                                         Source<?> source, boolean isInInternalNamespace, DefinitionService definitionService,
+                                         TextSource<?> source, boolean isInInternalNamespace, DefinitionService definitionService,
                                          ConfigAdapter configAdapter, DefinitionParserAdapter definitionParserAdapter) {
         super(parentHandler, xmlReader, source, isInInternalNamespace, definitionService, configAdapter, definitionParserAdapter);
         builder = lazyBuilder;

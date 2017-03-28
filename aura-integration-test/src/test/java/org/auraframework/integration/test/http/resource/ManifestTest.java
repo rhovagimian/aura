@@ -19,7 +19,6 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.CoreMatchers.startsWith;
 import static org.junit.Assert.assertThat;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.spy;
 
@@ -243,41 +242,6 @@ public class ManifestTest extends AuraImplTestCase {
             url = matcher.group();
             assertThat("Aura URL in manifest should contain UID.", url, containsString(fwId));
         }
-    }
-
-    @Test
-    public void testManifestContainsJwtToken() throws Exception {
-        // Arrange
-        if (contextService.isEstablished()) {
-            contextService.endContext();
-        }
-        DefDescriptor<ApplicationDef> appDesc = definitionService.getDefDescriptor("appCache:testApp", ApplicationDef.class);
-        AuraContext context = contextService.startContext(AuraContext.Mode.PROD, AuraContext.Format.MANIFEST,
-                AuraContext.Authentication.AUTHENTICATED, appDesc);
-        context.setApplicationDescriptor(appDesc);
-        String uid = definitionService.getUid(null, appDesc);
-        context.addLoaded(appDesc, uid);
-
-        MockHttpServletRequest mockRequest = new MockHttpServletRequest();
-        MockHttpServletResponse mockResponse = new MockHttpServletResponse();
-        ConfigAdapter spyConfigAdapter = spy(this.configAdapter);
-        String expectedToken = "jwtToken";
-        doReturn(expectedToken).when(spyConfigAdapter).generateJwtToken();
-
-        Manifest manifest = getManifest();
-        manifest.setConfigAdapter(spyConfigAdapter);
-
-        // Act
-        manifest.write(mockRequest, mockResponse, context);
-        String content = mockResponse.getContentAsString();
-
-        // Assert
-        Pattern pattern = Pattern.compile("# bootstrap token: (.*)\n");
-        Matcher matcher = pattern.matcher(content);
-        assertTrue("Failed to find Jwt Token in manifest:\n" + content, matcher.find());
-
-        String token = matcher.group(1);
-        assertEquals("Found unexpected token", expectedToken, token);
     }
 
     @Test

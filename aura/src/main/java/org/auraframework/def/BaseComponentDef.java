@@ -15,7 +15,10 @@
  */
 package org.auraframework.def;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.auraframework.def.design.DesignDef;
 import org.auraframework.expression.PropertyReference;
@@ -24,15 +27,35 @@ import org.auraframework.throwable.quickfix.QuickFixException;
 /**
  * Common base for ComponentDef and ApplicationDef
  */
-public interface BaseComponentDef extends RootDefinition, HasJavascriptReferences, JavascriptClassDefinition {
+public interface BaseComponentDef extends RootDefinition {
 
+    /**
+     * Get the component descriptor.
+     */
     @Override
     DefDescriptor<? extends BaseComponentDef> getDescriptor();
 
+    /**
+     * is the component extensible?
+     *
+     * @return true if this component can be extended
+     */
     boolean isExtensible();
 
+    /**
+     * Is this component abstract.
+     *
+     * @return true if this component cannot be instantiated.
+     */
     boolean isAbstract();
 
+    /**
+     * Is this component a template.
+     *
+     * FIXME: this should really be a different type.
+     *
+     * @return true if this component is a template.
+     */
     boolean isTemplate();
 
     /**
@@ -76,19 +99,23 @@ public interface BaseComponentDef extends RootDefinition, HasJavascriptReference
      */
     Map<String, LocatorDef> getLocators();
 
-    DefDescriptor<ModelDef> getLocalModelDefDescriptor();
+    List<DefDescriptor<ModelDef>> getModelDefDescriptors() throws QuickFixException;
 
-    List<DefDescriptor<ModelDef>> getModelDefDescriptors()
-            throws QuickFixException;
-
-    List<DefDescriptor<ControllerDef>> getControllerDefDescriptors()
-            throws QuickFixException;
+    List<DefDescriptor<ControllerDef>> getControllerDefDescriptors() throws QuickFixException;
 
     ModelDef getModelDef() throws QuickFixException;
 
     ControllerDef getControllerDef() throws QuickFixException;
+
     HelperDef getHelperDef() throws QuickFixException;
-    RendererDef getRendererDef() throws QuickFixException;
+
+    /**
+     * Get the code for the client side for this component.
+     *
+     * @param minify should it be the minified version or not.
+     */
+    String getCode(boolean minify);
+
     @Override
     ProviderDef getProviderDef() throws QuickFixException;
 
@@ -97,10 +124,6 @@ public interface BaseComponentDef extends RootDefinition, HasJavascriptReference
     DefDescriptor<? extends BaseComponentDef> getExtendsDescriptor();
 
     DefDescriptor<RendererDef> getRendererDescriptor() throws QuickFixException;
-
-    DefDescriptor<StyleDef> getStyleDescriptor();
-
-    StyleDef getStyleDef() throws QuickFixException;
 
     FlavoredStyleDef getFlavoredStyleDef() throws QuickFixException;
 
@@ -116,10 +139,6 @@ public interface BaseComponentDef extends RootDefinition, HasJavascriptReference
 
     ComponentDef getTemplateDef() throws QuickFixException;
 
-    DefDescriptor<DesignDef> getDesignDefDescriptor();
-
-    DefDescriptor<SVGDef> getSVGDefDescriptor();
-
     DefDescriptor<ComponentDef> getTemplateDefDescriptor();
 
     public List<ClientLibraryDef> getClientLibraries();
@@ -134,27 +153,12 @@ public interface BaseComponentDef extends RootDefinition, HasJavascriptReference
 
     boolean hasLocalDependencies() throws QuickFixException;
 
-    public static enum WhitespaceBehavior {
-        /**
-         * < keep or eliminate insignificant whitespace as the framework determines is best
-         */
-        OPTIMIZE,
-        /** < treat all whitespace as significant, hence preserving it */
-        PRESERVE
-    };
-
-    public static final WhitespaceBehavior DefaultWhitespaceBehavior = WhitespaceBehavior.OPTIMIZE;
-
-    WhitespaceBehavior getWhitespaceBehavior();
-
     /**
      * Adds specified client libraries to definition
      *
      * @param clientLibs list of client libraries
      */
     void addClientLibs(List<ClientLibraryDef> clientLibs);
-
-    Set<ResourceDef> getResourceDefs() throws QuickFixException;
 
     /**
      * Gets the default flavor name, or if an explicit defaultFlavor is not specified, and a {@link FlavoredStyleDef}
@@ -199,8 +203,17 @@ public interface BaseComponentDef extends RootDefinition, HasJavascriptReference
      */
     Set<String> getAllFlavorNames() throws QuickFixException;
 
-	ControllerDef getRemoteControllerDef() throws QuickFixException;
-	HelperDef getRemoteHelperDef() throws QuickFixException;
-	ProviderDef getRemoteProviderDef() throws QuickFixException;
-	RendererDef getRemoteRendererDef() throws QuickFixException;
+    //
+    // Bundled Defs.
+    //
+    ControllerDef getRemoteControllerDef();
+    HelperDef getRemoteHelperDef();
+    ProviderDef getRemoteProviderDef();
+    RendererDef getRemoteRendererDef();
+    StyleDef getStyleDef();
+    DefDescriptor<DesignDef> getDesignDefDescriptor();
+    DesignDef getDesignDef();
+    SVGDef getSVGDef();
+    // FIXME: this should be deprecated.
+    DefDescriptor<SVGDef> getSVGDefDescriptor();
 }

@@ -775,7 +775,7 @@ var AuraDevToolService = function() {
                              if(typeof cmp.getName !== "function"){
                                  cmp = cmp.getDef().getDescriptor().getFullName();
                              }else{
-                                 cmpName = cmp.getName();
+                                 cmpName = cmp.getType();
                              }
                              //Making sure that we have unique components
                              if(!(cmpName in cmpInfo)){
@@ -1421,7 +1421,7 @@ var AuraDevToolService = function() {
             return result;
         },
         help : function(){
-            $A.deprecated("$A.qhelp and $A.devToolService.help are not supported.",null,"2017/01/06");
+            $A.deprecated("$A.qhelp and $A.devToolService.help are not supported.",null,"2017/01/06","2017/02/17");
             var ret = [];
             ret.push("\n COQL Usage");
             var txt = this.helpText;

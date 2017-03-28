@@ -96,7 +96,6 @@ public class DefDescriptorImpl<T extends Definition> implements DefDescriptor<T>
             case HELPER:
             case STYLE:
             case FLAVORED_STYLE:
-            case RESOURCE:
             case TYPE:
             case PROVIDER:
             case TOKEN_DESCRIPTOR_PROVIDER:
@@ -148,6 +147,7 @@ public class DefDescriptorImpl<T extends Definition> implements DefDescriptor<T>
             case TOKENS:
             case DESIGN:
             case SVG:
+            case MODULE:
             case FLAVOR_BUNDLE:
             case FLAVORS:
                 Type tag = TypeParser.parseTag(qualifiedName);
@@ -188,18 +188,25 @@ public class DefDescriptorImpl<T extends Definition> implements DefDescriptor<T>
             return name;
         }
         if (namespace == null) {
-            return String.format("%s://%s", prefix, name);
+            return prefix + "://" + name;
         }
-        String format = MARKUP_PREFIX.equals(prefix) ? "%s://%s:%s" : "%s://%s.%s";
-        return String.format(format, prefix, namespace, name);
+        if (MARKUP_PREFIX.equals(prefix)) {
+            return prefix + "://" + namespace + ":" + name;
+        } else {
+            return prefix + "://" + namespace + "." + name;
+        }
+
     }
 
     private static String buildDescriptorName(String prefix, String namespace, String name) {
         if (namespace == null) {
-            return String.format("%s", name);
+            return name;
         }
-        String format = MARKUP_PREFIX.equals(prefix) ? "%s:%s" : "%s.%s";
-        return String.format(format, namespace, name);
+        if (MARKUP_PREFIX.equals(prefix)) {
+            return namespace + ":" + name;
+        } else {
+            return namespace + "." + name;
+        }
     }
 
     /**
